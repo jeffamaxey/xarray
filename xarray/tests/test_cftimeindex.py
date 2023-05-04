@@ -179,10 +179,7 @@ def feb_days(date_type):
 def dec_days(date_type):
     import cftime
 
-    if date_type is cftime.Datetime360Day:
-        return 30
-    else:
-        return 31
+    return 30 if date_type is cftime.Datetime360Day else 31
 
 
 @pytest.fixture
@@ -361,11 +358,7 @@ def test_get_slice_bound(date_type, index):
     # The kind argument is required in earlier versions of pandas even though it
     # is not used by CFTimeIndex.  This logic can be removed once our minimum
     # version of pandas is at least 1.3.
-    if Version(pd.__version__) < Version("1.3"):
-        kind_args = ("getitem",)
-    else:
-        kind_args = ()
-
+    kind_args = ("getitem", ) if Version(pd.__version__) < Version("1.3") else ()
     result = index.get_slice_bound("0001", "left", *kind_args)
     expected = 0
     assert result == expected
@@ -388,11 +381,7 @@ def test_get_slice_bound_decreasing_index(date_type, monotonic_decreasing_index)
     # The kind argument is required in earlier versions of pandas even though it
     # is not used by CFTimeIndex.  This logic can be removed once our minimum
     # version of pandas is at least 1.3.
-    if Version(pd.__version__) < Version("1.3"):
-        kind_args = ("getitem",)
-    else:
-        kind_args = ()
-
+    kind_args = ("getitem", ) if Version(pd.__version__) < Version("1.3") else ()
     result = monotonic_decreasing_index.get_slice_bound("0001", "left", *kind_args)
     expected = 2
     assert result == expected
@@ -419,11 +408,7 @@ def test_get_slice_bound_length_one_index(date_type, length_one_index):
     # The kind argument is required in earlier versions of pandas even though it
     # is not used by CFTimeIndex.  This logic can be removed once our minimum
     # version of pandas is at least 1.3.
-    if Version(pd.__version__) <= Version("1.3"):
-        kind_args = ("getitem",)
-    else:
-        kind_args = ()
-
+    kind_args = ("getitem", ) if Version(pd.__version__) <= Version("1.3") else ()
     result = length_one_index.get_slice_bound("0001", "left", *kind_args)
     expected = 0
     assert result == expected

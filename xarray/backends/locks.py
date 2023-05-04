@@ -209,6 +209,4 @@ def combine_locks(locks):
 
 def ensure_lock(lock):
     """Ensure that the given object is a lock."""
-    if lock is None or lock is False:
-        return DummyLock()
-    return lock
+    return DummyLock() if lock is None or lock is False else lock

@@ -33,7 +33,7 @@ def _get_nan_block_lengths(obj, dim: Hashable, index: Variable):
     valid_arange = arange.where(valid)
     cumulative_nans = valid_arange.ffill(dim=dim).fillna(index[0])
 
-    nan_block_lengths = (
+    return (
         cumulative_nans.diff(dim=dim, label="upper")
         .reindex({dim: obj[dim]})
         .where(valid)
@@ -41,8 +41,6 @@ def _get_nan_block_lengths(obj, dim: Hashable, index: Variable):
         .where(~valid, 0)
         .fillna(index[-1] - valid_arange.max())
     )
-
-    return nan_block_lengths
 
 
 class BaseInterpolator:
@@ -148,11 +146,8 @@ class ScipyInterpolator(BaseInterpolator):
 
         nan = np.nan if yi.dtype.kind != "c" else np.nan + np.nan * 1j
 
-        if fill_value is None and method == "linear":
-            fill_value = nan, nan
-        elif fill_value is None:
-            fill_value = nan
-
+        if fill_value is None:
+            fill_value = (nan, nan) if method == "linear" else nan
         self.f = interp1d(
             xi,
             yi,
@@ -204,11 +199,7 @@ def _apply_over_vars_with_dim(func, self, dim=None, **kwargs):
     ds = type(self)(coords=self.coords, attrs=self.attrs)
 
     for name, var in self.data_vars.items():
-        if dim in var.dims:
-            ds[name] = func(var, dim=dim, **kwargs)
-        else:
-            ds[name] = var
-
+        ds[name] = func(var, dim=dim, **kwargs) if dim in var.dims else var
     return ds
 
 
@@ -331,11 +322,10 @@ def interp_na(
             # Convert to float
             max_gap = timedelta_to_numeric(max_gap)
 
-        if not use_coordinate:
-            if not isinstance(max_gap, (Number, np.number)):
-                raise TypeError(
-                    f"Expected integer or floating point max_gap since use_coordinate=False. Received {max_type}."
-                )
+        if not use_coordinate and not isinstance(max_gap, (Number, np.number)):
+            raise TypeError(
+                f"Expected integer or floating point max_gap since use_coordinate=False. Received {max_type}."
+            )
 
     # method
     index = get_clean_interp_index(self, dim, use_coordinate=use_coordinate)
@@ -486,7 +476,7 @@ def _get_interpolator(method, vectorizeable_only=False, **kwargs):
     # prioritize scipy.interpolate
     if (
         method == "linear"
-        and not kwargs.get("fill_value", None) == "extrapolate"
+        and kwargs.get("fill_value", None) != "extrapolate"
         and not vectorizeable_only
     ):
         kwargs.update(method=method)
@@ -527,15 +517,14 @@ def _get_interpolator_nd(method, **kwargs):
     """
     valid_methods = ["linear", "nearest"]
 
-    if method in valid_methods:
-        kwargs.update(method=method)
-        interp_class = _import_interpolant("interpn", method)
-    else:
+    if method not in valid_methods:
         raise ValueError(
             f"{method} is not a valid interpolator for interpolating "
             "over multiple dimensions."
         )
 
+    kwargs.update(method=method)
+    interp_class = _import_interpolant("interpn", method)
     return interp_class, kwargs
 
 
@@ -734,18 +723,8 @@ def interp_func(var, x, new_x, method, kwargs):
 
         # scipy.interpolate.interp1d always forces to float.
         # Use the same check for blockwise as well:
-        if not issubclass(var.dtype.type, np.inexact):
-            dtype = np.float_
-        else:
-            dtype = var.dtype
-
-        if dask_version < Version("2020.12"):
-            # Using meta and dtype at the same time doesn't work.
-            # Remove this whenever the minimum requirement for dask is 2020.12:
-            meta = None
-        else:
-            meta = var._meta
-
+        dtype = var.dtype if issubclass(var.dtype.type, np.inexact) else np.float_
+        meta = None if dask_version < Version("2020.12") else var._meta
         return da.blockwise(
             _dask_aware_interpnd,
             out_ind,
@@ -769,9 +748,7 @@ def _interp1d(var, x, new_x, func, kwargs):
     rslt = func(x, var, assume_sorted=True, **kwargs)(np.ravel(new_x))
     if new_x.ndim > 1:
         return rslt.reshape(var.shape[:-1] + new_x.shape)
-    if new_x.ndim == 0:
-        return rslt[..., -1]
-    return rslt
+    return rslt[..., -1] if new_x.ndim == 0 else rslt
 
 
 def _interpnd(var, x, new_x, func, kwargs):

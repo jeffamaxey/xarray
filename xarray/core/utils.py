@@ -59,12 +59,11 @@ def alias(obj: Callable[..., T], old_name: str) -> Callable[..., T]:
 def _maybe_cast_to_cftimeindex(index: pd.Index) -> pd.Index:
     from ..coding.cftimeindex import CFTimeIndex
 
-    if len(index) > 0 and index.dtype == "O":
-        try:
-            return CFTimeIndex(index)
-        except (ImportError, TypeError):
-            return index
-    else:
+    if len(index) <= 0 or index.dtype != "O":
+        return index
+    try:
+        return CFTimeIndex(index)
+    except (ImportError, TypeError):
         return index
 
 
@@ -171,9 +170,8 @@ def list_equiv(first, second):
     equiv = True
     if len(first) != len(second):
         return False
-    else:
-        for f, s in zip(first, second):
-            equiv = equiv and equivalent(f, s)
+    for f, s in zip(first, second):
+        equiv = equiv and equivalent(f, s)
     return equiv
 
 
@@ -429,7 +427,7 @@ def compat_dict_union(
     """
     new_dict = dict(first_dict)
     update_safety_check(first_dict, second_dict, compat)
-    new_dict.update(second_dict)
+    new_dict |= second_dict
     return new_dict
 
 
@@ -596,9 +594,7 @@ class ReprObject:
         return self._value
 
     def __eq__(self, other) -> bool:
-        if isinstance(other, ReprObject):
-            return self._value == other._value
-        return False
+        return self._value == other._value if isinstance(other, ReprObject) else False
 
     def __hash__(self) -> int:
         return hash((type(self), self._value))
@@ -651,21 +647,17 @@ def read_magic_number_from_file(filename_or_obj, count=8) -> bytes:
 def try_read_magic_number_from_path(pathlike, count=8) -> bytes | None:
     if isinstance(pathlike, str) or hasattr(pathlike, "__fspath__"):
         path = os.fspath(pathlike)
-        try:
+        with contextlib.suppress(FileNotFoundError, TypeError):
             with open(path, "rb") as f:
                 return read_magic_number_from_file(f, count)
-        except (FileNotFoundError, TypeError):
-            pass
     return None
 
 
 def try_read_magic_number_from_file_or_path(filename_or_obj, count=8) -> bytes | None:
     magic_number = try_read_magic_number_from_path(filename_or_obj, count)
     if magic_number is None:
-        try:
+        with contextlib.suppress(TypeError):
             magic_number = read_magic_number_from_file(filename_or_obj, count)
-        except TypeError:
-            pass
     return magic_number
 
 
@@ -796,7 +788,7 @@ def get_temp_dimname(dims: Container[Hashable], new_dim: Hashable) -> Hashable:
         -> ['__rolling']
     """
     while new_dim in dims:
-        new_dim = "_" + str(new_dim)
+        new_dim = f"_{str(new_dim)}"
     return new_dim
 
 
@@ -816,8 +808,7 @@ def drop_dims_from_indexers(
     """
 
     if missing_dims == "raise":
-        invalid = indexers.keys() - set(dims)
-        if invalid:
+        if invalid := indexers.keys() - set(dims):
             raise ValueError(
                 f"Dimensions {invalid} do not exist. Expected one or more of {dims}"
             )
@@ -863,8 +854,7 @@ def drop_missing_dims(
 
     if missing_dims == "raise":
         supplied_dims_set = {val for val in supplied_dims if val is not ...}
-        invalid = supplied_dims_set - set(dims)
-        if invalid:
+        if invalid := supplied_dims_set - set(dims):
             raise ValueError(
                 f"Dimensions {invalid} do not exist. Expected one or more of {dims}"
             )
@@ -873,8 +863,7 @@ def drop_missing_dims(
 
     elif missing_dims == "warn":
 
-        invalid = set(supplied_dims) - set(dims)
-        if invalid:
+        if invalid := set(supplied_dims) - set(dims):
             warnings.warn(
                 f"Dimensions {invalid} do not exist. Expected one or more of {dims}"
             )
@@ -902,10 +891,7 @@ class UncachedAccessor:
         self._accessor = accessor
 
     def __get__(self, obj, cls):
-        if obj is None:
-            return self._accessor
-
-        return self._accessor(obj)
+        return self._accessor if obj is None else self._accessor(obj)
 
 
 # Singleton type, as per https://github.com/python/typing/pull/240

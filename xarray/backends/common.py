@@ -149,11 +149,10 @@ class ArrayWriter:
             self.sources.append(source)
             self.targets.append(target)
             self.regions.append(region)
+        elif region:
+            target[region] = source
         else:
-            if region:
-                target[region] = source
-            else:
-                target[...] = source
+            target[...] = source
 
     def sync(self, compute=True):
         if self.sources:
@@ -324,11 +323,9 @@ class AbstractWritableDataStore(AbstractDataStore):
 
         existing_dims = self.get_dimensions()
 
-        dims = {}
-        for v in unlimited_dims:  # put unlimited_dims first
-            dims[v] = None
+        dims = {v: None for v in unlimited_dims}
         for v in variables.values():
-            dims.update(dict(zip(v.dims, v.shape)))
+            dims |= dict(zip(v.dims, v.shape))
 
         for dim, length in dims.items():
             if dim in existing_dims and length != existing_dims[dim]:

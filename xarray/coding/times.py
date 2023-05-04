@@ -113,16 +113,7 @@ def _netcdf_to_numpy_timeunit(units):
 
 
 def _ensure_padded_year(ref_date):
-    # Reference dates without a padded year (e.g. since 1-1-1 or since 2-3-4)
-    # are ambiguous (is it YMD or DMY?). This can lead to some very odd
-    # behaviour e.g. pandas (via dateutil) passes '1-1-1 00:00:0.0' as
-    # '2001-01-01 00:00:00' (because it assumes a) DMY and b) that year 1 is
-    # shorthand for 2001 (like 02 would be shorthand for year 2002)).
-
-    # Here we ensure that there is always a four-digit year, with the
-    # assumption being that year comes first if we get something ambiguous.
-    matches_year = re.match(r".*\d{4}.*", ref_date)
-    if matches_year:
+    if matches_year := re.match(r".*\d{4}.*", ref_date):
         # all good, return
         return ref_date
 
@@ -131,7 +122,7 @@ def _ensure_padded_year(ref_date):
     matches_start_digits = re.match(r"(\d+)(.*)", ref_date)
     if not matches_start_digits:
         raise ValueError(f"invalid reference date for time units: {ref_date}")
-    ref_year, everything_else = (s for s in matches_start_digits.groups())
+    ref_year, everything_else = iter(matches_start_digits.groups())
     ref_date_padded = f"{int(ref_year):04d}{everything_else}"
 
     warning_msg = (
@@ -277,9 +268,8 @@ def decode_cf_datetime(num_dates, units, calendar=None, use_cftime=None):
                         SerializationWarning,
                         stacklevel=3,
                     )
-            else:
-                if _is_standard_calendar(calendar):
-                    dates = cftime_to_nptime(dates)
+            elif _is_standard_calendar(calendar):
+                dates = cftime_to_nptime(dates)
     elif use_cftime:
         dates = _decode_datetime_with_cftime(flat_num_dates, units, calendar)
     else:
@@ -335,10 +325,14 @@ def _infer_time_units_from_diff(unique_timedeltas):
         # unique_timedeltas to a TimedeltaIndex.  In the meantime, however, the
         # modulus operator works for TimedeltaIndex objects.
         timedeltas = pd.TimedeltaIndex(unique_timedeltas)
-    for time_unit in time_units:
-        if np.all(timedeltas % unit_timedelta(time_unit) == zero_timedelta):
-            return time_unit
-    return "seconds"
+    return next(
+        (
+            time_unit
+            for time_unit in time_units
+            if np.all(timedeltas % unit_timedelta(time_unit) == zero_timedelta)
+        ),
+        "seconds",
+    )
 
 
 def infer_calendar_name(dates):
@@ -425,8 +419,7 @@ def cftime_to_nptime(times, raise_on_invalid=True):
         except ValueError as e:
             if raise_on_invalid:
                 raise ValueError(
-                    "Cannot convert date {} to a date in the "
-                    "standard calendar.  Reason: {}.".format(t, e)
+                    f"Cannot convert date {t} to a date in the standard calendar.  Reason: {e}."
                 )
             else:
                 dt = "NaT"
@@ -458,10 +451,7 @@ def convert_times(times, date_type, raise_on_invalid=True):
         except ValueError as e:
             if raise_on_invalid:
                 raise ValueError(
-                    "Cannot convert date {} to a date in the "
-                    "{} calendar.  Reason: {}.".format(
-                        t, date_type(2000, 1, 1).calendar, e
-                    )
+                    f"Cannot convert date {t} to a date in the {date_type(2000, 1, 1).calendar} calendar.  Reason: {e}."
                 )
             else:
                 dt = np.NaN

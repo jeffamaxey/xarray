@@ -557,12 +557,12 @@ class TestDataset:
         assert set(ds.xindexes) == {"dim2", "dim3", "time"}
         assert len(ds.xindexes) == 3
         assert "dim2" in repr(ds.xindexes)
-        assert all([isinstance(idx, Index) for idx in ds.xindexes.values()])
+        assert all(isinstance(idx, Index) for idx in ds.xindexes.values())
 
         assert set(ds.indexes) == {"dim2", "dim3", "time"}
         assert len(ds.indexes) == 3
         assert "dim2" in repr(ds.indexes)
-        assert all([isinstance(idx, pd.Index) for idx in ds.indexes.values()])
+        assert all(isinstance(idx, pd.Index) for idx in ds.indexes.values())
 
         assert list(ds.coords) == ["dim2", "dim3", "time", "numbers"]
         assert "dim2" in ds.coords
@@ -5280,12 +5280,13 @@ class TestDataset:
     def test_dataset_diff_n1(self):
         ds = create_test_data(seed=1)
         actual = ds.diff("dim2")
-        expected = {}
-        expected["var1"] = DataArray(
-            np.diff(ds["var1"].values, axis=1),
-            {"dim2": ds["dim2"].values[1:]},
-            ["dim1", "dim2"],
-        )
+        expected = {
+            "var1": DataArray(
+                np.diff(ds["var1"].values, axis=1),
+                {"dim2": ds["dim2"].values[1:]},
+                ["dim1", "dim2"],
+            )
+        }
         expected["var2"] = DataArray(
             np.diff(ds["var2"].values, axis=1),
             {"dim2": ds["dim2"].values[1:]},
@@ -5299,12 +5300,13 @@ class TestDataset:
     def test_dataset_diff_n2(self):
         ds = create_test_data(seed=1)
         actual = ds.diff("dim2", n=2)
-        expected = {}
-        expected["var1"] = DataArray(
-            np.diff(ds["var1"].values, axis=1, n=2),
-            {"dim2": ds["dim2"].values[2:]},
-            ["dim1", "dim2"],
-        )
+        expected = {
+            "var1": DataArray(
+                np.diff(ds["var1"].values, axis=1, n=2),
+                {"dim2": ds["dim2"].values[2:]},
+                ["dim1", "dim2"],
+            )
+        }
         expected["var2"] = DataArray(
             np.diff(ds["var2"].values, axis=1, n=2),
             {"dim2": ds["dim2"].values[2:]},
@@ -6044,10 +6046,7 @@ def ds(request, backend):
     else:
         raise ValueError
 
-    if backend == "dask":
-        return ds.chunk()
-
-    return ds
+    return ds.chunk() if backend == "dask" else ds
 
 
 @pytest.mark.parametrize(

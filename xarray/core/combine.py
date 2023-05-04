@@ -48,35 +48,36 @@ def _infer_tile_ids_from_nested_list(entry, current_pos):
 
 def _ensure_same_types(series, dim):
 
-    if series.dtype == object:
-        types = set(series.map(type))
-        if len(types) > 1:
-            try:
-                import cftime
+    if series.dtype != object:
+        return
+    types = set(series.map(type))
+    if len(types) > 1:
+        try:
+            import cftime
 
-                cftimes = any(issubclass(t, cftime.datetime) for t in types)
-            except ImportError:
-                cftimes = False
+            cftimes = any(issubclass(t, cftime.datetime) for t in types)
+        except ImportError:
+            cftimes = False
 
-            types = ", ".join(t.__name__ for t in types)
+        types = ", ".join(t.__name__ for t in types)
 
+        error_msg = (
+            f"Cannot combine along dimension '{dim}' with mixed types."
+            f" Found: {types}."
+        )
+        if cftimes:
             error_msg = (
-                f"Cannot combine along dimension '{dim}' with mixed types."
-                f" Found: {types}."
+                f"{error_msg} If importing data directly from a file then "
+                f"setting `use_cftime=True` may fix this issue."
             )
-            if cftimes:
-                error_msg = (
-                    f"{error_msg} If importing data directly from a file then "
-                    f"setting `use_cftime=True` may fix this issue."
-                )
 
-            raise TypeError(error_msg)
+        raise TypeError(error_msg)
 
 
 def _infer_concat_order_from_coords(datasets):
 
     concat_dims = []
-    tile_ids = [() for ds in datasets]
+    tile_ids = [() for _ in datasets]
 
     # All datasets have same variables because they've been grouped as such
     ds0 = datasets[0]
@@ -109,9 +110,7 @@ def _infer_concat_order_from_coords(datasets):
                     ascending = False
                 else:
                     raise ValueError(
-                        "Coordinate variable {} is neither "
-                        "monotonically increasing nor "
-                        "monotonically decreasing on all datasets".format(dim)
+                        f"Coordinate variable {dim} is neither monotonically increasing nor monotonically decreasing on all datasets"
                     )
 
                 # Assume that any two datasets whose coord along dim starts
@@ -221,10 +220,7 @@ def _combine_nd(
     n_dims = len(example_tile_id)
     if len(concat_dims) != n_dims:
         raise ValueError(
-            "concat_dims has length {} but the datasets "
-            "passed are nested in a {}-dimensional structure".format(
-                len(concat_dims), n_dims
-            )
+            f"concat_dims has length {len(concat_dims)} but the datasets passed are nested in a {n_dims}-dimensional structure"
         )
 
     # Each iteration of this loop reduces the length of the tile_ids tuples
@@ -345,19 +341,15 @@ def _nested_combine(
 
     # Arrange datasets for concatenation
     # Use information from the shape of the user input
-    if not ids:
-        # Determine tile_IDs by structure of input in N-D
-        # (i.e. ordering in list-of-lists)
-        combined_ids = _infer_concat_order_from_positions(datasets)
-    else:
-        # Already sorted so just use the ids already passed
-        combined_ids = dict(zip(ids, datasets))
-
+    combined_ids = (
+        dict(zip(ids, datasets))
+        if ids
+        else _infer_concat_order_from_positions(datasets)
+    )
     # Check that the inferred shape is combinable
     _check_shape_tile_ids(combined_ids)
 
-    # Apply series of concatenate or merge operations along each dimension
-    combined = _combine_nd(
+    return _combine_nd(
         combined_ids,
         concat_dims,
         compat=compat,
@@ -367,7 +359,6 @@ def _nested_combine(
         join=join,
         combine_attrs=combine_attrs,
     )
-    return combined
 
 
 # Define type for arbitrarily-nested list of lists recursively
@@ -650,8 +641,7 @@ def _combine_single_variable_hypercube(
         indexes = concatenated.indexes.get(dim)
         if not (indexes.is_monotonic_increasing or indexes.is_monotonic_decreasing):
             raise ValueError(
-                "Resulting object does not have monotonic"
-                " global indexes along dimension {}".format(dim)
+                f"Resulting object does not have monotonic global indexes along dimension {dim}"
             )
 
     return concatenated
@@ -934,29 +924,28 @@ def combine_by_coords(
         for data_object in data_objects
     ]
     if any(objs_are_unnamed_dataarrays):
-        if all(objs_are_unnamed_dataarrays):
-            # Combine into a single larger DataArray
-            temp_datasets = [
-                unnamed_dataarray._to_temp_dataset()
-                for unnamed_dataarray in data_objects
-            ]
-
-            combined_temp_dataset = _combine_single_variable_hypercube(
-                temp_datasets,
-                fill_value=fill_value,
-                data_vars=data_vars,
-                coords=coords,
-                compat=compat,
-                join=join,
-                combine_attrs=combine_attrs,
-            )
-            return DataArray()._from_temp_dataset(combined_temp_dataset)
-        else:
+        if not all(objs_are_unnamed_dataarrays):
             # Must be a mix of unnamed dataarrays with either named dataarrays or with datasets
             # Can't combine these as we wouldn't know whether to merge or concatenate the arrays
             raise ValueError(
                 "Can't automatically combine unnamed DataArrays with either named DataArrays or Datasets."
             )
+        # Combine into a single larger DataArray
+        temp_datasets = [
+            unnamed_dataarray._to_temp_dataset()
+            for unnamed_dataarray in data_objects
+        ]
+
+        combined_temp_dataset = _combine_single_variable_hypercube(
+            temp_datasets,
+            fill_value=fill_value,
+            data_vars=data_vars,
+            coords=coords,
+            compat=compat,
+            join=join,
+            combine_attrs=combine_attrs,
+        )
+        return DataArray()._from_temp_dataset(combined_temp_dataset)
     else:
         # Promote any named DataArrays to single-variable Datasets to simplify combining
         data_objects = [

@@ -90,12 +90,11 @@ def lazy_elemwise_func(array, func, dtype):
     -------
     Either a dask.array.Array or _ElementwiseFunctionArray.
     """
-    if is_duck_dask_array(array):
-        import dask.array as da
-
-        return da.map_blocks(func, array, dtype=dtype)
-    else:
+    if not is_duck_dask_array(array):
         return _ElementwiseFunctionArray(array, func, dtype)
+    import dask.array as da
+
+    return da.map_blocks(func, array, dtype=dtype)
 
 
 def unpack_for_encoding(var):
@@ -110,10 +109,7 @@ def safe_setitem(dest, key, value, name=None):
     if key in dest:
         var_str = f" on variable {name!r}" if name else ""
         raise ValueError(
-            "failed to prevent overwriting existing key {} in attrs{}. "
-            "This is probably an encoding field used by xarray to describe "
-            "how a variable is serialized. To proceed, remove this key from "
-            "the variable's attributes manually.".format(key, var_str)
+            f"failed to prevent overwriting existing key {key} in attrs{var_str}. This is probably an encoding field used by xarray to describe how a variable is serialized. To proceed, remove this key from the variable's attributes manually."
         )
     dest[key] = value
 
@@ -179,11 +175,10 @@ class CFMaskCoder(VariableCoder):
     def decode(self, variable, name=None):
         dims, data, attrs, encoding = unpack_for_decoding(variable)
 
-        raw_fill_values = [
+        if raw_fill_values := [
             pop_to(attrs, encoding, attr, name=name)
             for attr in ("missing_value", "_FillValue")
-        ]
-        if raw_fill_values:
+        ]:
             encoded_fill_values = {
                 fv
                 for option in raw_fill_values
@@ -229,13 +224,12 @@ def _choose_float_dtype(dtype, has_offset):
     if dtype.itemsize <= 4 and np.issubdtype(dtype, np.floating):
         return np.float32
     # float32 can exactly represent all integers up to 24 bits
-    if dtype.itemsize <= 2 and np.issubdtype(dtype, np.integer):
-        # A scale factor is entirely safe (vanishing into the mantissa),
-        # but a large integer offset could lead to loss of precision.
-        # Sensitivity analysis can be tricky, so we just use a float64
-        # if there's any offset at all - better unoptimised than wrong!
-        if not has_offset:
-            return np.float32
+    if (
+        dtype.itemsize <= 2
+        and np.issubdtype(dtype, np.integer)
+        and not has_offset
+    ):
+        return np.float32
     # For all other types and circumstances, we just use float64.
     # (safe because eg. complex numbers are not supported in NetCDF)
     return np.float64

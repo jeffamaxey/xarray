@@ -203,11 +203,7 @@ def ensure_dtype_not_object(var, name=None):
 
         if is_duck_dask_array(data):
             warnings.warn(
-                "variable {} has data in the form of a dask array with "
-                "dtype=object, which means it is being loaded into memory "
-                "to determine a data type that can be safely stored on disk. "
-                "To avoid this, coerce this variable to a fixed-size dtype "
-                "with astype() before saving it.".format(name),
+                f"variable {name} has data in the form of a dask array with dtype=object, which means it is being loaded into memory to determine a data type that can be safely stored on disk. To avoid this, coerce this variable to a fixed-size dtype with astype() before saving it.",
                 SerializationWarning,
             )
             data = data.compute()
@@ -403,12 +399,15 @@ def _update_bounds_attributes(variables):
     for v in variables.values():
         attrs = v.attrs
         has_date_units = "units" in attrs and "since" in attrs["units"]
-        if has_date_units and "bounds" in attrs:
-            if attrs["bounds"] in variables:
-                bounds_attrs = variables[attrs["bounds"]].attrs
-                bounds_attrs.setdefault("units", attrs["units"])
-                if "calendar" in attrs:
-                    bounds_attrs.setdefault("calendar", attrs["calendar"])
+        if (
+            has_date_units
+            and "bounds" in attrs
+            and attrs["bounds"] in variables
+        ):
+            bounds_attrs = variables[attrs["bounds"]].attrs
+            bounds_attrs.setdefault("units", attrs["units"])
+            if "calendar" in attrs:
+                bounds_attrs.setdefault("calendar", attrs["calendar"])
 
 
 def _update_bounds_encoding(variables):
@@ -453,12 +452,15 @@ def _update_bounds_encoding(variables):
                 UserWarning,
             )
 
-        if has_date_units and "bounds" in attrs:
-            if attrs["bounds"] in variables:
-                bounds_encoding = variables[attrs["bounds"]].encoding
-                bounds_encoding.setdefault("units", encoding["units"])
-                if "calendar" in encoding:
-                    bounds_encoding.setdefault("calendar", encoding["calendar"])
+        if (
+            has_date_units
+            and "bounds" in attrs
+            and attrs["bounds"] in variables
+        ):
+            bounds_encoding = variables[attrs["bounds"]].encoding
+            bounds_encoding.setdefault("units", encoding["units"])
+            if "calendar" in encoding:
+                bounds_encoding.setdefault("calendar", encoding["calendar"])
 
 
 def decode_cf_variables(
@@ -772,12 +774,11 @@ def _encode_coordinates(variables, attributes, non_dim_coord_names):
         # we get support for attrs["coordinates"] for free.
         coords_str = pop_to(encoding, attrs, "coordinates") or attrs.get("coordinates")
         if not coords_str and variable_coordinates[name]:
-            coordinates_text = " ".join(
+            if coordinates_text := " ".join(
                 str(coord_name)
                 for coord_name in variable_coordinates[name]
                 if coord_name not in not_technically_coordinates
-            )
-            if coordinates_text:
+            ):
                 attrs["coordinates"] = coordinates_text
         if "coordinates" in attrs:
             written_coords.update(attrs["coordinates"].split())
@@ -874,8 +875,11 @@ def cf_encoder(variables, attributes):
                 "leap_year",
                 "month_lengths",
             ]:
-                if attr in new_vars[bounds].attrs and attr in var.attrs:
-                    if new_vars[bounds].attrs[attr] == var.attrs[attr]:
-                        new_vars[bounds].attrs.pop(attr)
+                if (
+                    attr in new_vars[bounds].attrs
+                    and attr in var.attrs
+                    and new_vars[bounds].attrs[attr] == var.attrs[attr]
+                ):
+                    new_vars[bounds].attrs.pop(attr)
 
     return new_vars, attributes

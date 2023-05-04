@@ -127,13 +127,14 @@ def _parse_size(data, norm, width):
 def _infer_scatter_data(
     darray, x, z, hue, size, size_norm, size_mapping=None, size_range=(1, 10)
 ):
-    # Broadcast together all the chosen variables:
-    to_broadcast = dict(y=darray)
-    to_broadcast.update(
-        {k: darray[v] for k, v in dict(x=x, z=z).items() if v is not None}
-    )
-    to_broadcast.update(
-        {k: darray[v] for k, v in dict(hue=hue, size=size).items() if v in darray.dims}
+    to_broadcast = (
+        dict(y=darray)
+        | {k: darray[v] for k, v in dict(x=x, z=z).items() if v is not None}
+        | {
+            k: darray[v]
+            for k, v in dict(hue=hue, size=size).items()
+            if v in darray.dims
+        }
     )
     broadcasted = dict(zip(to_broadcast.keys(), broadcast(*(to_broadcast.values()))))
 
@@ -199,17 +200,15 @@ def _infer_line_data(darray, x, y, hue):
             xname, huename = _infer_xy_labels(darray=darray, x=x, y=hue)
             xplt = darray[xname]
             if xplt.ndim > 1:
-                if huename in darray.dims:
-                    otherindex = 1 if darray.dims.index(huename) == 0 else 0
-                    otherdim = darray.dims[otherindex]
-                    yplt = darray.transpose(otherdim, huename, transpose_coords=False)
-                    xplt = xplt.transpose(otherdim, huename, transpose_coords=False)
-                else:
+                if huename not in darray.dims:
                     raise ValueError(
-                        "For 2D inputs, hue must be a dimension"
-                        " i.e. one of " + repr(darray.dims)
+                        f"For 2D inputs, hue must be a dimension i.e. one of {repr(darray.dims)}"
                     )
 
+                otherindex = 1 if darray.dims.index(huename) == 0 else 0
+                otherdim = darray.dims[otherindex]
+                yplt = darray.transpose(otherdim, huename, transpose_coords=False)
+                xplt = xplt.transpose(otherdim, huename, transpose_coords=False)
             else:
                 (xdim,) = darray[xname].dims
                 (huedim,) = darray[huename].dims
@@ -219,17 +218,15 @@ def _infer_line_data(darray, x, y, hue):
             yname, huename = _infer_xy_labels(darray=darray, x=y, y=hue)
             yplt = darray[yname]
             if yplt.ndim > 1:
-                if huename in darray.dims:
-                    otherindex = 1 if darray.dims.index(huename) == 0 else 0
-                    otherdim = darray.dims[otherindex]
-                    xplt = darray.transpose(otherdim, huename, transpose_coords=False)
-                    yplt = yplt.transpose(otherdim, huename, transpose_coords=False)
-                else:
+                if huename not in darray.dims:
                     raise ValueError(
-                        "For 2D inputs, hue must be a dimension"
-                        " i.e. one of " + repr(darray.dims)
+                        f"For 2D inputs, hue must be a dimension i.e. one of {repr(darray.dims)}"
                     )
 
+                otherindex = 1 if darray.dims.index(huename) == 0 else 0
+                otherdim = darray.dims[otherindex]
+                xplt = darray.transpose(otherdim, huename, transpose_coords=False)
+                yplt = yplt.transpose(otherdim, huename, transpose_coords=False)
             else:
                 (ydim,) = darray[yname].dims
                 (huedim,) = darray[huename].dims
@@ -301,29 +298,25 @@ def plot(
 
     ndims = len(plot_dims)
 
-    error_msg = (
-        "Only 1d and 2d plots are supported for facets in xarray. "
-        "See the package `Seaborn` for more options."
-    )
-
-    if ndims in [1, 2]:
+    if ndims in {1, 2}:
         if row or col:
             kwargs["subplot_kws"] = subplot_kws
             kwargs["row"] = row
             kwargs["col"] = col
             kwargs["col_wrap"] = col_wrap
-        if ndims == 1:
+        if ndims != 1 and ndims == 2 and hue or ndims == 1:
             plotfunc = line
             kwargs["hue"] = hue
         elif ndims == 2:
-            if hue:
-                plotfunc = line
-                kwargs["hue"] = hue
-            else:
-                plotfunc = pcolormesh
-                kwargs["subplot_kws"] = subplot_kws
+            plotfunc = pcolormesh
+            kwargs["subplot_kws"] = subplot_kws
     else:
         if row or col or hue:
+            error_msg = (
+                "Only 1d and 2d plots are supported for facets in xarray. "
+                "See the package `Seaborn` for more options."
+            )
+
             raise ValueError(error_msg)
         plotfunc = hist
 
@@ -407,7 +400,7 @@ def line(
     # Handle facetgrids first
     if row or col:
         allargs = locals().copy()
-        allargs.update(allargs.pop("kwargs"))
+        allargs |= allargs.pop("kwargs")
         allargs.pop("darray")
         return _easy_facetgrid(darray, line, kind="line", **allargs)
 
@@ -420,7 +413,7 @@ def line(
         )
 
     # The allargs dict passed to _easy_facetgrid above contains args
-    if args == ():
+    if not args:
         args = kwargs.pop("args", ())
     else:
         assert "args" not in kwargs
@@ -708,7 +701,7 @@ def scatter(
     cmap_params = kwargs.pop("cmap_params", None)
 
     figsize = kwargs.pop("figsize", None)
-    subplot_kws = dict()
+    subplot_kws = {}
     if z is not None and ax is None:
         # TODO: Importing Axes3D is not necessary in matplotlib >= 3.2.
         # Remove when minimum requirement of matplotlib is 3.2:
@@ -732,14 +725,14 @@ def scatter(
     if add_legend is not None:
         pass
     elif add_guide is None or add_guide is True:
-        add_legend = True if _data["hue_style"] == "discrete" else False
+        add_legend = _data["hue_style"] == "discrete"
     elif add_legend is None:
         add_legend = False
 
     if add_colorbar is not None:
         pass
     elif add_guide is None or add_guide is True:
-        add_colorbar = True if _data["hue_style"] == "continuous" else False
+        add_colorbar = _data["hue_style"] == "continuous"
     else:
         add_colorbar = False
 
@@ -805,13 +798,7 @@ def scatter(
 
         def to_label(data, key, x):
             """Map prop values back to its original values."""
-            if key in data:
-                # Use reindex to be less sensitive to float errors.
-                # Return as numpy array since legend_elements
-                # seems to require that:
-                return data[key].reindex(x, method="nearest").to_numpy()
-            else:
-                return x
+            return data[key].reindex(x, method="nearest").to_numpy() if key in data else x
 
         handles, labels = [], []
         for subtitle, prop, func in [
@@ -1025,41 +1012,41 @@ def _plot2d(plotfunc):
     @override_signature(signature)
     @functools.wraps(plotfunc)
     def newplotfunc(
-        darray,
-        x=None,
-        y=None,
-        figsize=None,
-        size=None,
-        aspect=None,
-        ax=None,
-        row=None,
-        col=None,
-        col_wrap=None,
-        xincrease=True,
-        yincrease=True,
-        add_colorbar=None,
-        add_labels=True,
-        vmin=None,
-        vmax=None,
-        cmap=None,
-        center=None,
-        robust=False,
-        extend=None,
-        levels=None,
-        infer_intervals=None,
-        colors=None,
-        subplot_kws=None,
-        cbar_ax=None,
-        cbar_kwargs=None,
-        xscale=None,
-        yscale=None,
-        xticks=None,
-        yticks=None,
-        xlim=None,
-        ylim=None,
-        norm=None,
-        **kwargs,
-    ):
+            darray,
+            x=None,
+            y=None,
+            figsize=None,
+            size=None,
+            aspect=None,
+            ax=None,
+            row=None,
+            col=None,
+            col_wrap=None,
+            xincrease=True,
+            yincrease=True,
+            add_colorbar=None,
+            add_labels=True,
+            vmin=None,
+            vmax=None,
+            cmap=None,
+            center=None,
+            robust=False,
+            extend=None,
+            levels=None,
+            infer_intervals=None,
+            colors=None,
+            subplot_kws=None,
+            cbar_ax=None,
+            cbar_kwargs=None,
+            xscale=None,
+            yscale=None,
+            xticks=None,
+            yticks=None,
+            xlim=None,
+            ylim=None,
+            norm=None,
+            **kwargs,
+        ):
         # All 2d plots in xarray share this function signature.
         # Method signature below should be consistent.
 
@@ -1083,7 +1070,7 @@ def _plot2d(plotfunc):
                 vmin, vmax, robust = None, None, False
 
         if subplot_kws is None:
-            subplot_kws = dict()
+            subplot_kws = {}
 
         if plotfunc.__name__ == "surface" and not kwargs.get("_is_facetgrid", False):
             if ax is None:
@@ -1412,8 +1399,7 @@ def contour(x, y, z, ax, **kwargs):
 
     Wraps :py:func:`matplotlib:matplotlib.pyplot.contour`.
     """
-    primitive = ax.contour(x, y, z, **kwargs)
-    return primitive
+    return ax.contour(x, y, z, **kwargs)
 
 
 @_plot2d
@@ -1423,8 +1409,7 @@ def contourf(x, y, z, ax, **kwargs):
 
     Wraps :py:func:`matplotlib:matplotlib.pyplot.contourf`.
     """
-    primitive = ax.contourf(x, y, z, **kwargs)
-    return primitive
+    return ax.contourf(x, y, z, **kwargs)
 
 
 @_plot2d
@@ -1438,14 +1423,11 @@ def pcolormesh(x, y, z, ax, xscale=None, yscale=None, infer_intervals=None, **kw
     # decide on a default for infer_intervals (GH781)
     x = np.asarray(x)
     if infer_intervals is None:
-        if hasattr(ax, "projection"):
-            if len(x.shape) == 1:
-                infer_intervals = True
-            else:
-                infer_intervals = False
-        else:
-            infer_intervals = True
-
+        infer_intervals = bool(
+            hasattr(ax, "projection")
+            and len(x.shape) == 1
+            or not hasattr(ax, "projection")
+        )
     if (
         infer_intervals
         and not np.issubdtype(x.dtype, str)
@@ -1492,5 +1474,4 @@ def surface(x, y, z, ax, **kwargs):
 
     Wraps :py:meth:`matplotlib:mpl_toolkits.mplot3d.axes3d.Axes3D.plot_surface`.
     """
-    primitive = ax.plot_surface(x, y, z, **kwargs)
-    return primitive
+    return ax.plot_surface(x, y, z, **kwargs)

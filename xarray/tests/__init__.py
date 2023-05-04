@@ -44,9 +44,10 @@ def _importorskip(modname, minversion=None):
     try:
         mod = importlib.import_module(modname)
         has = True
-        if minversion is not None:
-            if Version(mod.__version__) < Version(minversion):
-                raise ImportError("Minimum version not satisfied")
+        if minversion is not None and Version(mod.__version__) < Version(
+            minversion
+        ):
+            raise ImportError("Minimum version not satisfied")
     except ImportError:
         has = False
     func = pytest.mark.skipif(not has, reason=f"requires {modname}")

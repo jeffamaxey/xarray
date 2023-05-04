@@ -38,7 +38,7 @@ def wrap_indent(text, start="", length=None):
     if length is None:
         length = len(start)
     indent = "\n" + " " * length
-    return start + indent.join(x for x in text.splitlines())
+    return start + indent.join(iter(text.splitlines()))
 
 
 def _get_indexer_at_least_n_items(shape, n_desired, from_end):
@@ -46,12 +46,11 @@ def _get_indexer_at_least_n_items(shape, n_desired, from_end):
     cum_items = np.cumprod(shape[::-1])
     n_steps = np.argmax(cum_items >= n_desired)
     stop = int(np.ceil(float(n_desired) / np.r_[1, cum_items][n_steps]))
-    indexer = (
+    return (
         ((-1 if from_end else 0),) * (len(shape) - 1 - n_steps)
         + ((slice(-stop, None) if from_end else slice(stop)),)
         + (slice(None),) * n_steps
     )
-    return indexer
 
 
 def first_n_items(array, n_desired):
@@ -122,10 +121,7 @@ def format_timestamp(t):
         # catch NaT and others that don't split nicely
         return datetime_str
     else:
-        if time_str == "00:00:00":
-            return date_str
-        else:
-            return f"{date_str}T{time_str}"
+        return date_str if time_str == "00:00:00" else f"{date_str}T{time_str}"
 
 
 def format_timedelta(t, timedelta_format=None):
@@ -173,8 +169,7 @@ def format_items(x):
         elif np.logical_not(time_needed).all():
             timedelta_format = "date"
 
-    formatted = [format_item(xi, timedelta_format) for xi in x]
-    return formatted
+    return [format_item(xi, timedelta_format) for xi in x]
 
 
 def format_array_flat(array, max_width: int):
@@ -298,10 +293,7 @@ def summarize_variable(
     marker = "*" if is_index else " "
     first_col = pretty_print(f"  {marker} {name} ", col_width)
 
-    if variable.dims:
-        dims_str = "({}) ".format(", ".join(map(str, variable.dims)))
-    else:
-        dims_str = ""
+    dims_str = f'({", ".join(map(str, variable.dims))}) ' if variable.dims else ""
     front_str = f"{first_col}{dims_str}{variable.dtype} "
 
     values_width = max_width - len(front_str)
@@ -327,8 +319,7 @@ EMPTY_REPR = "    *empty*"
 
 def _calculate_col_width(col_items):
     max_name_length = max(len(str(s)) for s in col_items) if col_items else 0
-    col_width = max(max_name_length, 7) + 6
-    return col_width
+    return max(max_name_length, 7) + 6
 
 
 def _mapping_repr(
@@ -410,8 +401,7 @@ def coords_repr(coords, col_width=None, max_rows=None):
 def indexes_repr(indexes):
     summary = ["Indexes:"]
     if indexes:
-        for k, v in indexes.items():
-            summary.append(wrap_indent(repr(v), f"{k}: "))
+        summary.extend(wrap_indent(repr(v), f"{k}: ") for k, v in indexes.items())
     else:
         summary += [EMPTY_REPR]
     return "\n".join(summary)
@@ -483,8 +473,7 @@ def dim_summary_limited(obj, col_width: int, max_rows: Optional[int] = None) -> 
 
 
 def unindexed_dims_repr(dims, coords, max_rows: Optional[int] = None):
-    unindexed_dims = [d for d in dims if d not in coords]
-    if unindexed_dims:
+    if unindexed_dims := [d for d in dims if d not in coords]:
         dims_start = "Dimensions without coordinates: "
         dims_str = _element_formatter(
             unindexed_dims, col_width=len(dims_start), max_rows=max_rows
@@ -518,20 +507,18 @@ def limit_lines(string: str, *, limit: int):
 def short_numpy_repr(array):
     array = np.asarray(array)
 
-    # default to lower precision so a full (abbreviated) line can fit on
-    # one line with the default display_width
-    options = {
-        "precision": 6,
-        "linewidth": OPTIONS["display_width"],
-        "threshold": OPTIONS["display_values_threshold"],
-    }
     if array.ndim < 3:
         edgeitems = 3
     elif array.ndim == 3:
         edgeitems = 2
     else:
         edgeitems = 1
-    options["edgeitems"] = edgeitems
+    options = {
+        "precision": 6,
+        "linewidth": OPTIONS["display_width"],
+        "threshold": OPTIONS["display_values_threshold"],
+        "edgeitems": edgeitems,
+    }
     with set_numpy_options(**options):
         return repr(array)
 
@@ -584,10 +571,9 @@ def array_repr(arr):
                 coords_repr(arr.coords, col_width=col_width, max_rows=max_rows)
             )
 
-        unindexed_dims_str = unindexed_dims_repr(
+        if unindexed_dims_str := unindexed_dims_repr(
             arr.dims, arr.coords, max_rows=max_rows
-        )
-        if unindexed_dims_str:
+        ):
             summary.append(unindexed_dims_str)
 
     if arr.attrs:
@@ -609,8 +595,9 @@ def dataset_repr(ds):
     if ds.coords:
         summary.append(coords_repr(ds.coords, col_width=col_width, max_rows=max_rows))
 
-    unindexed_dims_str = unindexed_dims_repr(ds.dims, ds.coords, max_rows=max_rows)
-    if unindexed_dims_str:
+    if unindexed_dims_str := unindexed_dims_repr(
+        ds.dims, ds.coords, max_rows=max_rows
+    ):
         summary.append(unindexed_dims_str)
 
     summary.append(data_vars_repr(ds.data_vars, col_width=col_width, max_rows=max_rows))
@@ -623,9 +610,7 @@ def dataset_repr(ds):
 
 def diff_dim_summary(a, b):
     if a.dims != b.dims:
-        return "Differing dimensions:\n    ({}) != ({})".format(
-            dim_summary(a), dim_summary(b)
-        )
+        return f"Differing dimensions:\n    ({dim_summary(a)}) != ({dim_summary(b)})"
     else:
         return ""
 
@@ -667,10 +652,11 @@ def _diff_mapping_repr(
     for k in a_keys & b_keys:
         try:
             # compare xarray variable
-            if not callable(compat):
-                compatible = getattr(a_mapping[k], compat)(b_mapping[k])
-            else:
-                compatible = compat(a_mapping[k], b_mapping[k])
+            compatible = (
+                compat(a_mapping[k], b_mapping[k])
+                if callable(compat)
+                else getattr(a_mapping[k], compat)(b_mapping[k])
+            )
             is_variable = True
         except AttributeError:
             # compare attribute value
@@ -752,17 +738,11 @@ def _compat_to_str(compat):
 def diff_array_repr(a, b, compat):
     # used for DataArray, Variable and IndexVariable
     summary = [
-        "Left and right {} objects are not {}".format(
-            type(a).__name__, _compat_to_str(compat)
-        )
+        f"Left and right {type(a).__name__} objects are not {_compat_to_str(compat)}"
     ]
 
     summary.append(diff_dim_summary(a, b))
-    if callable(compat):
-        equiv = compat
-    else:
-        equiv = array_equiv
-
+    equiv = compat if callable(compat) else array_equiv
     if not equiv(a.data, b.data):
         temp = [wrap_indent(short_numpy_repr(obj), start="    ") for obj in (a, b)]
         diff_data_repr = [
@@ -785,9 +765,7 @@ def diff_array_repr(a, b, compat):
 
 def diff_dataset_repr(a, b, compat):
     summary = [
-        "Left and right {} objects are not {}".format(
-            type(a).__name__, _compat_to_str(compat)
-        )
+        f"Left and right {type(a).__name__} objects are not {_compat_to_str(compat)}"
     ]
 
     col_width = _calculate_col_width(set(list(a.variables) + list(b.variables)))

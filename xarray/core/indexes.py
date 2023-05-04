@@ -59,11 +59,7 @@ class Index:
     def create_variables(
         self, variables: Mapping[Any, Variable] | None = None
     ) -> IndexVars:
-        if variables is not None:
-            # pass through
-            return dict(**variables)
-        else:
-            return {}
+        return dict(**variables) if variables is not None else {}
 
     def to_pandas_index(self) -> pd.Index:
         """Cast this xarray index to a pandas.Index object or raise a TypeError
@@ -210,8 +206,7 @@ def get_indexer_nd(index, labels, method=None, tolerance=None):
     """
     flat_labels = np.ravel(labels)
     flat_indexer = index.get_indexer(flat_labels, method=method, tolerance=tolerance)
-    indexer = flat_indexer.reshape(labels.shape)
-    return indexer
+    return flat_indexer.reshape(labels.shape)
 
 
 class PandasIndex(Index):
@@ -288,7 +283,7 @@ class PandasIndex(Index):
         if not indexes:
             new_pd_index = pd.Index([])
         else:
-            if not all(idx.dim == dim for idx in indexes):
+            if any(idx.dim != dim for idx in indexes):
                 dims = ",".join({f"{idx.dim!r}" for idx in indexes})
                 raise ValueError(
                     f"Cannot concatenate along dimension {dim!r} indexes with "
@@ -312,11 +307,11 @@ class PandasIndex(Index):
     ) -> PandasIndex:
         new_pd_index = cls._concat_indexes(indexes, dim, positions)
 
-        if not indexes:
-            coord_dtype = None
-        else:
-            coord_dtype = np.result_type(*[idx.coord_dtype for idx in indexes])
-
+        coord_dtype = (
+            np.result_type(*[idx.coord_dtype for idx in indexes])
+            if indexes
+            else None
+        )
         return cls(new_pd_index, dim=dim, coord_dtype=coord_dtype)
 
     def create_variables(
@@ -394,17 +389,16 @@ class PandasIndex(Index):
                             "'tolerance' is not supported when indexing using a CategoricalIndex."
                         )
                     indexer = self.index.get_loc(label_value)
+                elif method is None:
+                    indexer = self.index.get_loc(label_value)
                 else:
-                    if method is not None:
-                        indexer = get_indexer_nd(
-                            self.index, label_array, method, tolerance
+                    indexer = get_indexer_nd(
+                        self.index, label_array, method, tolerance
+                    )
+                    if np.any(indexer < 0):
+                        raise KeyError(
+                            f"not all values found in index {coord_name!r}"
                         )
-                        if np.any(indexer < 0):
-                            raise KeyError(
-                                f"not all values found in index {coord_name!r}"
-                            )
-                    else:
-                        indexer = self.index.get_loc(label_value)
             elif label_array.dtype.kind == "b":
                 indexer = label_array
             else:
@@ -421,9 +415,11 @@ class PandasIndex(Index):
         return IndexSelResult({self.dim: indexer})
 
     def equals(self, other: Index):
-        if not isinstance(other, PandasIndex):
-            return False
-        return self.index.equals(other.index) and self.dim == other.dim
+        return (
+            self.index.equals(other.index) and self.dim == other.dim
+            if isinstance(other, PandasIndex)
+            else False
+        )
 
     def join(self: PandasIndex, other: PandasIndex, how: str = "inner") -> PandasIndex:
         if how == "outer":
@@ -466,11 +462,7 @@ class PandasIndex(Index):
         return self._replace(index, dim=new_dim)
 
     def copy(self, deep=True):
-        if deep:
-            index = self.index.copy(deep=True)
-        else:
-            # index will be copied in constructor
-            index = self.index
+        index = self.index.copy(deep=True) if deep else self.index
         return self._replace(index)
 
     def __getitem__(self, indexer: Any):
@@ -482,7 +474,7 @@ def _check_dim_compat(variables: Mapping[Any, Variable], all_dims: str = "equal"
     either share the same (single) dimension or each have a different dimension.
 
     """
-    if any([var.ndim != 1 for var in variables.values()]):
+    if any(var.ndim != 1 for var in variables.values()):
         raise ValueError("PandasMultiIndex only accepts 1-dimensional variables")
 
     dims = {var.dims for var in variables.values()}
@@ -572,9 +564,7 @@ class PandasMultiIndex(PandasIndex):
         )
         index.name = dim
         level_coords_dtype = {name: var.dtype for name, var in variables.items()}
-        obj = cls(index, dim, level_coords_dtype=level_coords_dtype)
-
-        return obj
+        return cls(index, dim, level_coords_dtype=level_coords_dtype)
 
     @classmethod
     def concat(  # type: ignore[override]
@@ -585,15 +575,16 @@ class PandasMultiIndex(PandasIndex):
     ) -> PandasMultiIndex:
         new_pd_index = cls._concat_indexes(indexes, dim, positions)
 
-        if not indexes:
-            level_coords_dtype = None
-        else:
-            level_coords_dtype = {}
-            for name in indexes[0].level_coords_dtype:
-                level_coords_dtype[name] = np.result_type(
+        level_coords_dtype = (
+            {
+                name: np.result_type(
                     *[idx.level_coords_dtype[name] for idx in indexes]
                 )
-
+                for name in indexes[0].level_coords_dtype
+            }
+            if indexes
+            else None
+        )
         return cls(new_pd_index, dim=dim, level_coords_dtype=level_coords_dtype)
 
     @classmethod
@@ -774,7 +765,7 @@ class PandasMultiIndex(PandasIndex):
         scalar_coord_values = {}
 
         # label(s) given for multi-index level(s)
-        if all([lbl in self.index.names for lbl in labels]):
+        if all(lbl in self.index.names for lbl in labels):
             label_values = {}
             for k, v in labels.items():
                 label_array = normalize_label(v, dtype=self.level_coords_dtype[k])
@@ -787,7 +778,7 @@ class PandasMultiIndex(PandasIndex):
                         f"available along coordinate {k!r} (multi-index level)"
                     )
 
-            has_slice = any([isinstance(v, slice) for v in label_values.values()])
+            has_slice = any(isinstance(v, slice) for v in label_values.values())
 
             if len(label_values) == self.index.nlevels and not has_slice:
                 indexer = self.index.get_loc(
@@ -797,12 +788,11 @@ class PandasMultiIndex(PandasIndex):
                 indexer, new_index = self.index.get_loc_level(
                     tuple(label_values.values()), level=tuple(label_values.keys())
                 )
-                scalar_coord_values.update(label_values)
+                scalar_coord_values |= label_values
                 # GH2619. Raise a KeyError if nothing is chosen
                 if indexer.dtype.kind == "b" and indexer.sum() == 0:
                     raise KeyError(f"{labels} not found")
 
-        # assume one label value given for the multi-index "array" (dimension)
         else:
             if len(labels) > 1:
                 coord_name = next(iter(set(labels) - set(self.index.names)))
@@ -814,10 +804,9 @@ class PandasMultiIndex(PandasIndex):
             coord_name, label = next(iter(labels.items()))
 
             if is_dict_like(label):
-                invalid_levels = [
+                if invalid_levels := [
                     name for name in label if name not in self.index.names
-                ]
-                if invalid_levels:
+                ]:
                     raise ValueError(
                         f"invalid multi-index level names {invalid_levels}"
                     )
@@ -834,7 +823,7 @@ class PandasMultiIndex(PandasIndex):
                 else:
                     levels = [self.index.names[i] for i in range(len(label))]
                     indexer, new_index = self.index.get_loc_level(label, level=levels)
-                    scalar_coord_values.update({k: v for k, v in zip(levels, label)})
+                    scalar_coord_values |= dict(zip(levels, label))
 
             else:
                 label_array = normalize_label(label)
@@ -867,46 +856,44 @@ class PandasMultiIndex(PandasIndex):
                     }
                     indexer = DataArray(indexer, coords=coords, dims=label.dims)
 
-        if new_index is not None:
-            if isinstance(new_index, pd.MultiIndex):
-                level_coords_dtype = {
-                    k: self.level_coords_dtype[k] for k in new_index.names
-                }
-                new_index = self._replace(
-                    new_index, level_coords_dtype=level_coords_dtype
-                )
-                dims_dict = {}
-                drop_coords = []
-            else:
-                new_index = PandasIndex(
-                    new_index,
-                    new_index.name,
-                    coord_dtype=self.level_coords_dtype[new_index.name],
-                )
-                dims_dict = {self.dim: new_index.index.name}
-                drop_coords = [self.dim]
-
-            # variable(s) attrs and encoding metadata are propagated
-            # when replacing the indexes in the resulting xarray object
-            new_vars = new_index.create_variables()
-            indexes = cast(Dict[Any, Index], {k: new_index for k in new_vars})
-
-            # add scalar variable for each dropped level
-            variables = new_vars
-            for name, val in scalar_coord_values.items():
-                variables[name] = Variable([], val)
-
-            return IndexSelResult(
-                {self.dim: indexer},
-                indexes=indexes,
-                variables=variables,
-                drop_indexes=list(scalar_coord_values),
-                drop_coords=drop_coords,
-                rename_dims=dims_dict,
-            )
-
-        else:
+        if new_index is None:
             return IndexSelResult({self.dim: indexer})
+        if isinstance(new_index, pd.MultiIndex):
+            level_coords_dtype = {
+                k: self.level_coords_dtype[k] for k in new_index.names
+            }
+            new_index = self._replace(
+                new_index, level_coords_dtype=level_coords_dtype
+            )
+            dims_dict = {}
+            drop_coords = []
+        else:
+            new_index = PandasIndex(
+                new_index,
+                new_index.name,
+                coord_dtype=self.level_coords_dtype[new_index.name],
+            )
+            dims_dict = {self.dim: new_index.index.name}
+            drop_coords = [self.dim]
+
+        # variable(s) attrs and encoding metadata are propagated
+        # when replacing the indexes in the resulting xarray object
+        new_vars = new_index.create_variables()
+        indexes = cast(Dict[Any, Index], {k: new_index for k in new_vars})
+
+        # add scalar variable for each dropped level
+        variables = new_vars
+        for name, val in scalar_coord_values.items():
+            variables[name] = Variable([], val)
+
+        return IndexSelResult(
+            {self.dim: indexer},
+            indexes=indexes,
+            variables=variables,
+            drop_indexes=list(scalar_coord_values),
+            drop_coords=drop_coords,
+            rename_dims=dims_dict,
+        )
 
     def join(self, other, how: str = "inner"):
         if how == "outer":
@@ -935,9 +922,7 @@ class PandasMultiIndex(PandasIndex):
         index = self.index.rename(new_names)
 
         new_dim = dims_dict.get(self.dim, self.dim)
-        new_level_coords_dtype = {
-            k: v for k, v in zip(new_names, self.level_coords_dtype.values())
-        }
+        new_level_coords_dtype = dict(zip(new_names, self.level_coords_dtype.values()))
         return self._replace(
             index, dim=new_dim, level_coords_dtype=new_level_coords_dtype
         )
@@ -966,9 +951,9 @@ def create_default_index_implicit(
     if isinstance(array, pd.MultiIndex):
         index = PandasMultiIndex(array, name)
         index_vars = index.create_variables()
-        # check for conflict between level names and variable names
-        duplicate_names = [k for k in index_vars if k in all_variables and k != name]
-        if duplicate_names:
+        if duplicate_names := [
+            k for k in index_vars if k in all_variables and k != name
+        ]:
             # dirty workaround for an edge case where both the dimension
             # coordinate and the level coordinates are given for the same
             # multi-index object => do not raise an error
@@ -1194,8 +1179,8 @@ class Indexes(collections.abc.Mapping, Generic[T_PandasOrXarrayIndex]):
         for idx, coords in self.group_by_index():
             new_idx = idx.copy(deep=deep)
             idx_vars = idx.create_variables(coords)
-            new_indexes.update({k: new_idx for k in coords})
-            new_index_vars.update(idx_vars)
+            new_indexes |= {k: new_idx for k in coords}
+            new_index_vars |= idx_vars
 
         return new_indexes, new_index_vars
 
@@ -1239,7 +1224,7 @@ def default_indexes(
         if name in dims:
             index, index_vars = create_default_index_implicit(var, coords)
             if set(index_vars) <= coord_names:
-                indexes.update({k: index for k in index_vars})
+                indexes |= {k: index for k in index_vars}
 
     return indexes
 
@@ -1264,19 +1249,18 @@ def indexes_equal(
     key = (id(index), id(other_index))
     equal: bool | None = None
 
-    if key not in cache:
-        if type(index) is type(other_index):
-            try:
-                equal = index.equals(other_index)
-            except NotImplementedError:
-                equal = None
-            else:
-                cache[key] = equal
-        else:
-            equal = None
-    else:
+    if key in cache:
         equal = cache[key]
 
+    elif type(index) is type(other_index):
+        try:
+            equal = index.equals(other_index)
+        except NotImplementedError:
+            equal = None
+        else:
+            cache[key] = equal
+    else:
+        equal = None
     if equal is None:
         equal = variable.equals(other_variable)
 
@@ -1321,18 +1305,17 @@ def _apply_indexes(
     args: Mapping[Any, Any],
     func: str,
 ) -> tuple[dict[Hashable, Index], dict[Hashable, Variable]]:
-    new_indexes: dict[Hashable, Index] = {k: v for k, v in indexes.items()}
+    new_indexes: dict[Hashable, Index] = dict(indexes.items())
     new_index_variables: dict[Hashable, Variable] = {}
 
     for index, index_vars in indexes.group_by_index():
         index_dims = {d for var in index_vars.values() for d in var.dims}
-        index_args = {k: v for k, v in args.items() if k in index_dims}
-        if index_args:
+        if index_args := {k: v for k, v in args.items() if k in index_dims}:
             new_index = getattr(index, func)(index_args)
             if new_index is not None:
-                new_indexes.update({k: new_index for k in index_vars})
+                new_indexes |= {k: new_index for k in index_vars}
                 new_index_vars = new_index.create_variables(index_vars)
-                new_index_variables.update(new_index_vars)
+                new_index_variables |= new_index_vars
             else:
                 for k in index_vars:
                     new_indexes.pop(k, None)

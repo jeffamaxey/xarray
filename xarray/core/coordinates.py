@@ -101,8 +101,7 @@ class Coordinates(Mapping[Any, "DataArray"]):
             ordered_dims = list(self.dims)
         elif set(ordered_dims) != set(self.dims):
             raise ValueError(
-                "ordered_dims must match dims, but does not: "
-                "{} vs {}".format(ordered_dims, self.dims)
+                f"ordered_dims must match dims, but does not: {ordered_dims} vs {self.dims}"
             )
 
         if len(ordered_dims) == 0:
@@ -171,7 +170,7 @@ class Coordinates(Mapping[Any, "DataArray"]):
             variables = dict(self.variables)
             indexes = dict(self.xindexes)
         else:
-            coord_list = [self, other] if not reflexive else [other, self]
+            coord_list = [other, self] if reflexive else [self, other]
             variables, indexes = merge_coordinates_without_align(coord_list)
         return variables, indexes
 
@@ -289,7 +288,7 @@ class DatasetCoordinates(Coordinates):
         # TODO(shoyer): once ._indexes is always populated by a dict, modify
         # it to update inplace instead.
         original_indexes = dict(self._data.xindexes)
-        original_indexes.update(indexes)
+        original_indexes |= indexes
         self._data._indexes = original_indexes
 
     def __delitem__(self, key: Hashable) -> None:
@@ -345,7 +344,7 @@ class DataArrayCoordinates(Coordinates):
         # TODO(shoyer): once ._indexes is always populated by a dict, modify
         # it to update inplace instead.
         original_indexes = dict(self._data.xindexes)
-        original_indexes.update(indexes)
+        original_indexes |= indexes
         self._data._indexes = original_indexes
 
     @property

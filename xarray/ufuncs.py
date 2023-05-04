@@ -30,10 +30,14 @@ _UNDEFINED = object()
 
 
 def _dispatch_priority(obj):
-    for priority, cls in enumerate(_dispatch_order):
-        if isinstance(obj, cls):
-            return priority
-    return -1
+    return next(
+        (
+            priority
+            for priority, cls in enumerate(_dispatch_order)
+            if isinstance(obj, cls)
+        ),
+        -1,
+    )
 
 
 class _UFuncDispatcher:
@@ -52,7 +56,7 @@ class _UFuncDispatcher:
 
         new_args = args
         res = _UNDEFINED
-        if len(args) > 2 or len(args) == 0:
+        if len(args) > 2 or not args:
             raise TypeError(f"cannot handle {len(args)} arguments for {self._name!r}")
         elif len(args) == 1:
             if isinstance(args[0], _xarray_types):
@@ -62,10 +66,9 @@ class _UFuncDispatcher:
             if p1 >= p2:
                 if isinstance(args[0], _xarray_types):
                     res = args[0]._binary_op(args[1], self)
-            else:
-                if isinstance(args[1], _xarray_types):
-                    res = args[1]._binary_op(args[0], self, reflexive=True)
-                    new_args = tuple(reversed(args))
+            elif isinstance(args[1], _xarray_types):
+                res = args[1]._binary_op(args[0], self, reflexive=True)
+                new_args = tuple(reversed(args))
 
         if res is _UNDEFINED:
             f = getattr(_np, self._name)
@@ -107,10 +110,7 @@ def _remove_unused_reference_labels(doc):
 
 
 def _dedent(doc):
-    if not isinstance(doc, str):
-        return doc
-
-    return textwrap.dedent(doc)
+    return textwrap.dedent(doc) if isinstance(doc, str) else doc
 
 
 def _create_op(name):

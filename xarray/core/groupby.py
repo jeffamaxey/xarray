@@ -483,7 +483,7 @@ class GroupBy:
         from .dataarray import DataArray
         from .dataset import Dataset
 
-        g = f if not reflexive else lambda x, y: f(y, x)
+        g = (lambda x, y: f(y, x)) if reflexive else f
 
         obj = self._obj
         group = self._group
@@ -722,7 +722,7 @@ class GroupBy:
         if dim is None:
             dim = self._group_dim
 
-        out = self.map(
+        return self.map(
             self._obj.__class__.quantile,
             shortcut=False,
             q=q,
@@ -732,7 +732,6 @@ class GroupBy:
             skipna=skipna,
             interpolation=interpolation,
         )
-        return out
 
     def where(self, cond, other=dtypes.NA):
         """Return elements from `self` or `other` depending on `cond`.

@@ -207,10 +207,7 @@ def lazy_array_equiv(arr1, arr2):
         return False
     if dask_array and is_duck_dask_array(arr1) and is_duck_dask_array(arr2):
         # GH3068, GH4221
-        if tokenize(arr1) == tokenize(arr2):
-            return True
-        else:
-            return None
+        return True if tokenize(arr1) == tokenize(arr2) else None
     return None
 
 
@@ -220,12 +217,11 @@ def allclose_or_equiv(arr1, arr2, rtol=1e-5, atol=1e-8):
     arr2 = asarray(arr2)
 
     lazy_equiv = lazy_array_equiv(arr1, arr2)
-    if lazy_equiv is None:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", r"All-NaN (slice|axis) encountered")
-            return bool(isclose(arr1, arr2, rtol=rtol, atol=atol, equal_nan=True).all())
-    else:
+    if lazy_equiv is not None:
         return lazy_equiv
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", r"All-NaN (slice|axis) encountered")
+        return bool(isclose(arr1, arr2, rtol=rtol, atol=atol, equal_nan=True).all())
 
 
 def array_equiv(arr1, arr2):
@@ -233,13 +229,12 @@ def array_equiv(arr1, arr2):
     arr1 = asarray(arr1)
     arr2 = asarray(arr2)
     lazy_equiv = lazy_array_equiv(arr1, arr2)
-    if lazy_equiv is None:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "In the future, 'NAT == x'")
-            flag_array = (arr1 == arr2) | (isnull(arr1) & isnull(arr2))
-            return bool(flag_array.all())
-    else:
+    if lazy_equiv is not None:
         return lazy_equiv
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "In the future, 'NAT == x'")
+        flag_array = (arr1 == arr2) | (isnull(arr1) & isnull(arr2))
+        return bool(flag_array.all())
 
 
 def array_notnull_equiv(arr1, arr2):
@@ -249,13 +244,12 @@ def array_notnull_equiv(arr1, arr2):
     arr1 = asarray(arr1)
     arr2 = asarray(arr2)
     lazy_equiv = lazy_array_equiv(arr1, arr2)
-    if lazy_equiv is None:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "In the future, 'NAT == x'")
-            flag_array = (arr1 == arr2) | isnull(arr1) | isnull(arr2)
-            return bool(flag_array.all())
-    else:
+    if lazy_equiv is not None:
         return lazy_equiv
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "In the future, 'NAT == x'")
+        flag_array = (arr1 == arr2) | isnull(arr1) | isnull(arr2)
+        return bool(flag_array.all())
 
 
 def count(data, axis=None):
@@ -423,11 +417,7 @@ def datetime_to_numeric(array, offset=None, datetime_unit=None, dtype=float):
     # TODO: make this function dask-compatible?
     # Set offset to minimum if not given
     if offset is None:
-        if array.dtype.kind in "Mm":
-            offset = _datetime_nanmin(array)
-        else:
-            offset = min(array)
-
+        offset = _datetime_nanmin(array) if array.dtype.kind in "Mm" else min(array)
     # Compute timedelta object.
     # For np.datetime64, this can silently yield garbage due to overflow.
     # One option is to enforce 1970-01-01 as the universal offset.

@@ -65,8 +65,7 @@ class Resample:
 
         else:
             raise ValueError(
-                'Specified method was "{}" but must be one of'
-                '"asfreq", "ffill", "bfill", or "interpolate"'.format(method)
+                f'Specified method was "{method}" but must be one of"asfreq", "ffill", "bfill", or "interpolate"'
             )
 
     def asfreq(self):
@@ -167,9 +166,7 @@ class DataArrayResample(DataArrayGroupByBase, DataArrayResampleReductions, Resam
 
         if dim == resample_dim:
             raise ValueError(
-                "Proxy resampling dimension ('{}') "
-                "cannot have the same name as actual dimension "
-                "('{}')! ".format(resample_dim, dim)
+                f"Proxy resampling dimension ('{resample_dim}') cannot have the same name as actual dimension ('{dim}')! "
             )
         self._dim = dim
         self._resample_dim = resample_dim
@@ -256,9 +253,7 @@ class DatasetResample(DatasetGroupByBase, DatasetResampleReductions, Resample):
 
         if dim == resample_dim:
             raise ValueError(
-                "Proxy resampling dimension ('{}') "
-                "cannot have the same name as actual dimension "
-                "('{}')! ".format(resample_dim, dim)
+                f"Proxy resampling dimension ('{resample_dim}') cannot have the same name as actual dimension ('{dim}')! "
             )
         self._dim = dim
         self._resample_dim = resample_dim

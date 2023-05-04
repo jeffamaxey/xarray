@@ -306,13 +306,10 @@ def open_rasterio(
     if cache is None:
         cache = chunks is None
 
-    coords = {}
-
     # Get bands
     if riods.count < 1:
         raise ValueError("Unknown dims")
-    coords["band"] = np.asarray(riods.indexes)
-
+    coords = {"band": np.asarray(riods.indexes)}
     # Get coordinates
     if riods.transform.is_rectilinear:
         # 1d coordinates
@@ -338,13 +335,7 @@ def open_rasterio(
             )
 
     # Attributes
-    attrs = {}
-    # Affine transformation matrix (always available)
-    # This describes coefficients mapping pixel coordinates to CRS
-    # For serialization store as tuple of 6 floats, the last row being
-    # always (0, 0, 1) per definition (see
-    # https://github.com/sgillies/affine)
-    attrs["transform"] = tuple(riods.transform)[:6]
+    attrs = {"transform": tuple(riods.transform)[:6]}
     if hasattr(riods, "crs") and riods.crs:
         # CRS is a dict-like object specific to rasterio
         # If CRS is not None, we convert it back to a PROJ4 string using

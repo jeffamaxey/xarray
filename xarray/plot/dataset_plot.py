@@ -23,13 +23,13 @@ def _infer_meta_data(ds, x, y, hue, hue_style, add_guide, funcname):
     error_msg = " must be one of ({:s})".format(", ".join(dvars))
 
     if x not in dvars:
-        raise ValueError("x" + error_msg)
+        raise ValueError(f"x{error_msg}")
 
     if y not in dvars:
-        raise ValueError("y" + error_msg)
+        raise ValueError(f"y{error_msg}")
 
     if hue is not None and hue not in dvars:
-        raise ValueError("hue" + error_msg)
+        raise ValueError(f"hue{error_msg}")
 
     if hue:
         hue_is_numeric = _is_numeric(ds[hue].values)
@@ -43,8 +43,8 @@ def _infer_meta_data(ds, x, y, hue, hue_style, add_guide, funcname):
             )
 
         if add_guide is None or add_guide is True:
-            add_colorbar = True if hue_style == "continuous" else False
-            add_legend = True if hue_style == "discrete" else False
+            add_colorbar = hue_style == "continuous"
+            add_legend = hue_style == "discrete"
         else:
             add_colorbar = False
             add_legend = False
@@ -68,16 +68,15 @@ def _infer_meta_data(ds, x, y, hue, hue_style, add_guide, funcname):
     else:
         add_quiverkey = False
 
-    if (add_guide or add_guide is None) and funcname == "streamplot":
-        if hue:
-            add_colorbar = True
-            if not hue_style:
-                hue_style = "continuous"
-            elif hue_style != "continuous":
-                raise ValueError(
-                    "hue_style must be 'continuous' or None for .plot.quiver or "
-                    ".plot.streamplot"
-                )
+    if (add_guide or add_guide is None) and funcname == "streamplot" and hue:
+        add_colorbar = True
+        if not hue_style:
+            hue_style = "continuous"
+        elif hue_style != "continuous":
+            raise ValueError(
+                "hue_style must be 'continuous' or None for .plot.quiver or "
+                ".plot.streamplot"
+            )
 
     if hue_style is not None and hue_style not in ["discrete", "continuous"]:
         raise ValueError("hue_style must be either None, 'discrete' or 'continuous'.")
@@ -566,8 +565,7 @@ def quiver(ds, x, y, ax, u, v, **kwargs):
 
     kwargs.pop("hue_style")
     kwargs.setdefault("pivot", "middle")
-    hdl = ax.quiver(*args, **kwargs, **cmap_params)
-    return hdl
+    return ax.quiver(*args, **kwargs, **cmap_params)
 
 
 @_dsplot

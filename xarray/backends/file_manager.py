@@ -247,8 +247,7 @@ class CachingFileManager(FileManager):
 
             if OPTIONS["warn_for_unclosed_files"]:
                 warnings.warn(
-                    "deallocating {}, but file is not already closed. "
-                    "This may indicate a bug.".format(self),
+                    f"deallocating {self}, but file is not already closed. This may indicate a bug.",
                     RuntimeWarning,
                     stacklevel=2,
                 )

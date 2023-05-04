@@ -57,15 +57,12 @@ def check_result_variables(
     elif kind == "data_vars":
         nice_str = "data"
 
-    # check that coords and data variables are as expected
-    missing = expected[kind] - set(getattr(result, kind))
-    if missing:
+    if missing := expected[kind] - set(getattr(result, kind)):
         raise ValueError(
             "Result from applying user function does not contain "
             f"{nice_str} variables {missing}."
         )
-    extra = set(getattr(result, kind)) - expected[kind]
-    if extra:
+    if extra := set(getattr(result, kind)) - expected[kind]:
         raise ValueError(
             "Result from applying user function has unexpected "
             f"{nice_str} variables {extra}."
@@ -85,14 +82,7 @@ def dataset_to_dataarray(obj: Dataset) -> DataArray:
 
 
 def dataarray_to_dataset(obj: DataArray) -> Dataset:
-    # only using _to_temp_dataset would break
-    # func = lambda x: x.to_dataset()
-    # since that relies on preserving name.
-    if obj.name is None:
-        dataset = obj._to_temp_dataset()
-    else:
-        dataset = obj.to_dataset()
-    return dataset
+    return obj._to_temp_dataset() if obj.name is None else obj.to_dataset()
 
 
 def make_meta(obj):
@@ -116,9 +106,7 @@ def make_meta(obj):
     meta.attrs = obj.attrs
     meta = meta.set_coords(obj.coords)
 
-    if obj_array is not None:
-        return dataset_to_dataarray(meta)
-    return meta
+    return dataset_to_dataarray(meta) if obj_array is not None else meta
 
 
 def infer_template(
@@ -266,12 +254,12 @@ def map_blocks(
     """
 
     def _wrapper(
-        func: Callable,
-        args: list,
-        kwargs: dict,
-        arg_is_array: Iterable[bool],
-        expected: dict,
-    ):
+            func: Callable,
+            args: list,
+            kwargs: dict,
+            arg_is_array: Iterable[bool],
+            expected: dict,
+        ):
         """
         Wrapper function that receives datasets in args; converts to dataarrays when necessary;
         passes these to the user function `func` and checks returned objects for expected shapes/sizes/etc.
@@ -293,12 +281,14 @@ def map_blocks(
 
         # check that index lengths and values are as expected
         for name, index in result._indexes.items():
-            if name in expected["shapes"]:
-                if result.sizes[name] != expected["shapes"][name]:
-                    raise ValueError(
-                        f"Received dimension {name!r} of length {result.sizes[name]}. "
-                        f"Expected length {expected['shapes'][name]}."
-                    )
+            if (
+                name in expected["shapes"]
+                and result.sizes[name] != expected["shapes"][name]
+            ):
+                raise ValueError(
+                    f"Received dimension {name!r} of length {result.sizes[name]}. "
+                    f"Expected length {expected['shapes'][name]}."
+                )
             if name in expected["indexes"]:
                 expected_index = expected["indexes"][name]
                 if not index.equals(expected_index):
@@ -521,13 +511,7 @@ def map_blocks(
 
             key: tuple[Any, ...] = (gname_l,)
             for dim in variable.dims:
-                if dim in chunk_index:
-                    key += (chunk_index[dim],)
-                else:
-                    # unchunked dimensions in the input have one chunk in the result
-                    # output can have new dimensions with exactly one chunk
-                    key += (0,)
-
+                key += (chunk_index[dim], ) if dim in chunk_index else (0, )
             # We're adding multiple new layers to the graph:
             # The first new layer is the result of the computation on
             # the array.

@@ -44,7 +44,7 @@ class IOSingleNetCDF:
             "lat": self.ny / 3,
         }
 
-        self.time_chunks = {"time": int(self.nt / 36)}
+        self.time_chunks = {"time": self.nt // 36}
 
         times = pd.date_range("1970-01-01", periods=self.nt, freq="D")
         lons = xr.DataArray(
@@ -247,7 +247,7 @@ class IOMultipleNetCDF:
             "lat": self.ny / 3,
         }
 
-        self.time_chunks = {"time": int(self.nt / 36)}
+        self.time_chunks = {"time": self.nt // 36}
 
         self.time_vars = np.split(
             pd.date_range("1970-01-01", periods=self.nt, freq="D"), self.nfiles

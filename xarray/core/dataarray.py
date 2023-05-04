@@ -593,13 +593,13 @@ class DataArray(
                 f"{dim} is not a dim. If supplying a ``name``, pass as a kwarg."
             )
 
-        if dim is not None:
-            if name is not None:
-                raise TypeError("cannot supply both dim and name arguments")
-            result = self._to_dataset_split(dim)
-        else:
+        if dim is None:
             result = self._to_dataset_whole(name)
 
+        elif name is not None:
+            raise TypeError("cannot supply both dim and name arguments")
+        else:
+            result = self._to_dataset_split(dim)
         if promote_attrs:
             result.attrs = dict(self.attrs)
 
@@ -757,11 +757,11 @@ class DataArray(
         if isinstance(key, str):
             self.coords[key] = value
         else:
-            # Coordinates in key, value and self[key] should be consistent.
-            # TODO Coordinate consistency in key is checked here, but it
-            # causes unnecessary indexing. It should be optimized.
-            obj = self[key]
             if isinstance(value, DataArray):
+                # Coordinates in key, value and self[key] should be consistent.
+                # TODO Coordinate consistency in key is checked here, but it
+                # causes unnecessary indexing. It should be optimized.
+                obj = self[key]
                 assert_coordinate_consistent(value, obj.coords.variables)
             # DataArray key -> Variable key
             key = {
@@ -1047,13 +1047,10 @@ class DataArray(
         variable = self.variable.copy(deep=deep, data=data)
         indexes, index_vars = self.xindexes.copy_indexes(deep=deep)
 
-        coords = {}
-        for k, v in self._coords.items():
-            if k in index_vars:
-                coords[k] = index_vars[k]
-            else:
-                coords[k] = v.copy(deep=deep)
-
+        coords = {
+            k: index_vars[k] if k in index_vars else v.copy(deep=deep)
+            for k, v in self._coords.items()
+        }
         return self._replace(variable, coords, indexes=indexes)
 
     def __copy__(self) -> DataArray:
@@ -1240,14 +1237,12 @@ class DataArray(
         for coord_name, coord_value in self._coords.items():
             if coord_name in index_variables:
                 coord_value = index_variables[coord_name]
-            else:
-                coord_indexers = {
-                    k: v for k, v in indexers.items() if k in coord_value.dims
-                }
-                if coord_indexers:
-                    coord_value = coord_value.isel(coord_indexers)
-                    if drop and coord_value.ndim == 0:
-                        continue
+            elif coord_indexers := {
+                k: v for k, v in indexers.items() if k in coord_value.dims
+            }:
+                coord_value = coord_value.isel(coord_indexers)
+                if drop and coord_value.ndim == 0:
+                    continue
             coords[coord_name] = coord_value
 
         return self._replace(variable=variable, coords=coords, indexes=indexes)
@@ -1485,10 +1480,7 @@ class DataArray(
           * x        (x) <U1 'a' 'b' 'c'
           * y        (y) <U1 'a' 'b' 'c'
         """
-        if exclude is None:
-            exclude = set()
-        else:
-            exclude = set(exclude)
+        exclude = set() if exclude is None else set(exclude)
         args = align(other, self, join="outer", copy=False, exclude=exclude)
 
         dims_map, common_coords = _get_broadcast_dims_map_common_coords(args, exclude)
@@ -1800,8 +1792,7 @@ class DataArray(
         """
         if self.dtype.kind not in "uifc":
             raise TypeError(
-                "interp only works for a numeric type array. "
-                "Given {}.".format(self.dtype)
+                f"interp only works for a numeric type array. Given {self.dtype}."
             )
         ds = self._to_temp_dataset().interp(
             coords,
@@ -1860,8 +1851,7 @@ class DataArray(
         """
         if self.dtype.kind not in "uifc":
             raise TypeError(
-                "interp only works for a numeric type array. "
-                "Given {}.".format(self.dtype)
+                f"interp only works for a numeric type array. Given {self.dtype}."
             )
         ds = self._to_temp_dataset().interp_like(
             other, method=method, kwargs=kwargs, assume_sorted=assume_sorted
@@ -2321,11 +2311,10 @@ class DataArray(
         variables = idx.levels[level_number]
         variable_dim = idx.names[level_number]
 
-        # pull variables out of datarray
-        data_dict = {}
-        for k in variables:
-            data_dict[k] = self.sel({variable_dim: k}, drop=True).squeeze(drop=True)
-
+        data_dict = {
+            k: self.sel({variable_dim: k}, drop=True).squeeze(drop=True)
+            for k in variables
+        }
         # unstacked dataset
         return Dataset(data_dict)
 
@@ -2370,14 +2359,13 @@ class DataArray(
         if dims:
             dims = tuple(utils.infix_dims(dims, self.dims, missing_dims))
         variable = self.variable.transpose(*dims)
-        if transpose_coords:
-            coords: dict[Hashable, Variable] = {}
-            for name, coord in self.coords.items():
-                coord_dims = tuple(dim for dim in dims if dim in coord.dims)
-                coords[name] = coord.variable.transpose(*coord_dims)
-            return self._replace(variable, coords)
-        else:
+        if not transpose_coords:
             return self._replace(variable)
+        coords: dict[Hashable, Variable] = {}
+        for name, coord in self.coords.items():
+            coord_dims = tuple(dim for dim in dims if dim in coord.dims)
+            coords[name] = coord.variable.transpose(*coord_dims)
+        return self._replace(variable, coords)
 
     @property
     def T(self) -> DataArray:
@@ -2524,8 +2512,7 @@ class DataArray(
                 "cannot provide fill value as a dictionary with "
                 "fillna on a DataArray"
             )
-        out = ops.fillna(self, value)
-        return out
+        return ops.fillna(self, value)
 
     def interpolate_na(
         self,
@@ -3109,10 +3096,7 @@ class DataArray(
         # use the same naming heuristics as pandas:
         # https://github.com/ContinuumIO/blaze/issues/458#issuecomment-51936356
         other_name = getattr(other, "name", _default)
-        if other_name is _default or other_name == self.name:
-            return self.name
-        else:
-            return None
+        return self.name if other_name is _default or other_name == self.name else None
 
     def __array_wrap__(self, obj, context=None) -> DataArray:
         new_var = self.variable.__array_wrap__(obj, context)
@@ -3156,9 +3140,9 @@ class DataArray(
         other_coords = getattr(other, "coords", None)
 
         variable = (
-            f(self.variable, other_variable)
-            if not reflexive
-            else f(other_variable, self.variable)
+            f(other_variable, self.variable)
+            if reflexive
+            else f(self.variable, other_variable)
         )
         coords, indexes = self.coords._merge_raw(other_coords, reflexive)
         name = self._result_name(other)
@@ -3209,17 +3193,15 @@ class DataArray(
             Can be used for plot titles
 
         """
-        one_dims = []
-        for dim, coord in self.coords.items():
-            if coord.size == 1:
-                one_dims.append(
-                    "{dim} = {v}{unit}".format(
-                        dim=dim,
-                        v=format_item(coord.values),
-                        unit=_get_units_from_attrs(coord),
-                    )
-                )
-
+        one_dims = [
+            "{dim} = {v}{unit}".format(
+                dim=dim,
+                v=format_item(coord.values),
+                unit=_get_units_from_attrs(coord),
+            )
+            for dim, coord in self.coords.items()
+            if coord.size == 1
+        ]
         title = ", ".join(one_dims)
         if len(title) > truncate:
             title = title[: (truncate - 3)] + "..."

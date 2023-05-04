@@ -289,10 +289,8 @@ def _calc_concat_over(datasets, dim, dim_names, data_vars, coords, compat):
 
     concat_dim_lengths = []
     for ds in datasets:
-        if concat_over_existing_dim:
-            if dim not in ds.dims:
-                if dim in ds:
-                    ds = ds.set_coords(dim)
+        if concat_over_existing_dim and dim not in ds.dims and dim in ds:
+            ds = ds.set_coords(dim)
         concat_over.update(k for k, v in ds.variables.items() if dim in v.dims)
         concat_dim_lengths.append(ds.dims.get(dim, 1))
 
@@ -399,7 +397,7 @@ def _parse_datasets(
     dims_sizes: dict[Hashable, int] = {}  # shared dimension sizes to expand variables
 
     for ds in datasets:
-        dims_sizes.update(ds.dims)
+        dims_sizes |= ds.dims
         all_coord_names.update(ds.coords)
         data_vars.update(ds.data_vars)
 

@@ -687,10 +687,7 @@ class DatasetIOBase:
     )
     def test_vectorized_indexing_negative_step(self):
         # use dask explicitly when present
-        if has_dask:
-            open_kwargs = {"chunks": {}}
-        else:
-            open_kwargs = None
+        open_kwargs = {"chunks": {}} if has_dask else None
         in_memory = create_test_data()
 
         def multiple_indexing(indexers):
@@ -979,7 +976,7 @@ class CFEncodedBase(DatasetIOBase):
 
     def test_coordinates_encoding(self):
         def equals_latlon(obj):
-            return obj == "lat lon" or obj == "lon lat"
+            return obj in ["lat lon", "lon lat"]
 
         original = Dataset(
             {"temp": ("x", [0, 1]), "precip": ("x", [0, -1])},
@@ -1210,11 +1207,10 @@ def create_tmp_file(suffix=".nc", allow_cleanup_failure=False):
 @contextlib.contextmanager
 def create_tmp_files(nfiles, suffix=".nc", allow_cleanup_failure=False):
     with ExitStack() as stack:
-        files = [
+        yield [
             stack.enter_context(create_tmp_file(suffix, allow_cleanup_failure))
-            for apath in np.arange(nfiles)
+            for _ in np.arange(nfiles)
         ]
-        yield files
 
 
 class NetCDF4Base(CFEncodedBase):

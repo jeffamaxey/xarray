@@ -33,9 +33,7 @@ except ModuleNotFoundError:
 
 
 def _decode_string(s):
-    if isinstance(s, bytes):
-        return s.decode("utf-8", "replace")
-    return s
+    return s.decode("utf-8", "replace") if isinstance(s, bytes) else s
 
 
 def _decode_attrs(d):
@@ -99,17 +97,16 @@ def _open_scipy_netcdf(filename, mode, mmap, version):
         return scipy.io.netcdf_file(filename, mode=mode, mmap=mmap, version=version)
     except TypeError as e:  # netcdf3 message is obscure in this case
         errmsg = e.args[0]
-        if "is not a valid NetCDF 3 file" in errmsg:
-            msg = """
+        if "is not a valid NetCDF 3 file" not in errmsg:
+            raise
+        msg = """
             If this is a NetCDF4 file, you may need to install the
             netcdf4 library, e.g.,
 
             $ pip install netcdf4
             """
-            errmsg += msg
-            raise TypeError(errmsg)
-        else:
-            raise
+        errmsg += msg
+        raise TypeError(errmsg)
 
 
 class ScipyDataStore(WritableCFDataStore):
@@ -187,7 +184,7 @@ class ScipyDataStore(WritableCFDataStore):
             raise ValueError(
                 f"{type(self).__name__} does not support modifying dimensions"
             )
-        dim_length = length if not is_unlimited else None
+        dim_length = None if is_unlimited else length
         self.ds.createDimension(name, dim_length)
 
     def _validate_attr_key(self, key):

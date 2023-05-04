@@ -166,10 +166,7 @@ def _netcdf4_create_group(dataset, name):
 
 
 def _nc4_require_group(ds, group, mode, create_group=_netcdf4_create_group):
-    if group in {None, "", "/"}:
-        # use the root group
-        return ds
-    else:
+    if group not in {None, "", "/"}:
         # make sure it's a string
         if not isinstance(group, str):
             raise ValueError("group must be a string or None")
@@ -184,7 +181,8 @@ def _nc4_require_group(ds, group, mode, create_group=_netcdf4_create_group):
                 else:
                     # wrap error to provide slightly more helpful message
                     raise OSError(f"group not found: {key}", e)
-        return ds
+    # use the root group
+    return ds
 
 
 def _ensure_fill_value_valid(data, attributes):
@@ -272,8 +270,7 @@ def _extract_nc4_variable_encoding(
             del encoding[k]
 
     if raise_on_invalid:
-        invalid = [k for k in encoding if k not in valid_encodings]
-        if invalid:
+        if invalid := [k for k in encoding if k not in valid_encodings]:
             raise ValueError(
                 f"unexpected encoding parameters for {backend!r} backend: {invalid!r}. Valid "
                 f"encodings are: {valid_encodings!r}"
@@ -315,13 +312,13 @@ class NetCDF4DataStore(WritableCFDataStore):
         if isinstance(manager, netCDF4.Dataset):
             if group is None:
                 root, group = find_root_and_group(manager)
-            else:
-                if type(manager) is not netCDF4.Dataset:
-                    raise ValueError(
-                        "must supply a root netCDF4.Dataset if the group "
-                        "argument is provided"
-                    )
+            elif type(manager) is netCDF4.Dataset:
                 root = manager
+            else:
+                raise ValueError(
+                    "must supply a root netCDF4.Dataset if the group "
+                    "argument is provided"
+                )
             manager = DummyFileManager(root)
 
         self._manager = manager
@@ -362,10 +359,7 @@ class NetCDF4DataStore(WritableCFDataStore):
 
         if lock is None:
             if mode == "r":
-                if is_remote_uri(filename):
-                    lock = NETCDFC_LOCK
-                else:
-                    lock = NETCDF4_PYTHON_LOCK
+                lock = NETCDFC_LOCK if is_remote_uri(filename) else NETCDF4_PYTHON_LOCK
             else:
                 if format is None or format.startswith("NETCDF4"):
                     base_lock = NETCDF4_PYTHON_LOCK
@@ -399,7 +393,7 @@ class NetCDF4DataStore(WritableCFDataStore):
         encoding = {}
         filters = var.filters()
         if filters is not None:
-            encoding.update(filters)
+            encoding |= filters
         chunking = var.chunking()
         if chunking is not None:
             if chunking == "contiguous":
@@ -438,7 +432,7 @@ class NetCDF4DataStore(WritableCFDataStore):
         }
 
     def set_dimension(self, name, length, is_unlimited=False):
-        dim_length = length if not is_unlimited else None
+        dim_length = None if is_unlimited else length
         self.ds.createDimension(name, size=dim_length)
 
     def set_attribute(self, key, value):

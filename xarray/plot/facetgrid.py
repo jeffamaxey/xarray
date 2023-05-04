@@ -28,7 +28,7 @@ def _nicetitle(coord, value, maxchar, template):
     title = template.format(coord=coord, value=prettyvalue)
 
     if len(title) > maxchar:
-        title = title[: (maxchar - 3)] + "..."
+        title = f"{title[:maxchar - 3]}..."
 
     return title
 
@@ -135,9 +135,9 @@ class FacetGrid:
             nfacet = nrow * ncol
             if col_wrap is not None:
                 warnings.warn("Ignoring col_wrap since both col and row were passed")
-        elif row and not col:
+        elif row:
             single_group = row
-        elif not row and col:
+        elif col:
             single_group = col
         else:
             raise ValueError("Pass a coordinate name as an argument for row or col")
@@ -180,7 +180,7 @@ class FacetGrid:
 
         if single_group:
             full = [{single_group: x} for x in data[single_group].to_numpy()]
-            empty = [None for x in range(nrow * ncol - len(full))]
+            empty = [None for _ in range(nrow * ncol - len(full))]
             name_dicts = full + empty
         else:
             rowcols = itertools.product(row_names, col_names)
@@ -264,7 +264,7 @@ class FacetGrid:
             for k, v in kwargs.items()
             if k not in {"cmap", "colors", "cbar_kwargs", "levels"}
         }
-        func_kwargs.update(cmap_params)
+        func_kwargs |= cmap_params
         func_kwargs["add_colorbar"] = False
         if func.__name__ != "surface":
             func_kwargs["add_labels"] = False

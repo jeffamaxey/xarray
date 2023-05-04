@@ -186,7 +186,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "xarray"
-copyright = "2014-%s, xarray Developers" % datetime.datetime.now().year
+copyright = f"2014-{datetime.datetime.now().year}, xarray Developers"
 
 # The short X.Y version.
 version = xarray.__version__.split("+")[0]
@@ -361,11 +361,7 @@ def linkcode_resolve(domain, info):
     except OSError:
         lineno = None
 
-    if lineno:
-        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
-    else:
-        linespec = ""
-
+    linespec = f"#L{lineno}-L{lineno + len(source) - 1}" if lineno else ""
     fn = os.path.relpath(fn, start=os.path.dirname(xarray.__file__))
 
     if "+" in xarray.__version__:

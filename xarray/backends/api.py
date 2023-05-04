@@ -185,19 +185,16 @@ def _resolve_decoders_kwargs(decode_cf, open_backend_dataset_parameters, **decod
 
 
 def _get_mtime(filename_or_obj):
-    # if passed an actual file path, augment the token with
-    # the file modification time
-    mtime = None
-
     try:
         path = os.fspath(filename_or_obj)
     except TypeError:
         path = None
 
-    if path and not is_remote_uri(path):
-        mtime = os.path.getmtime(filename_or_obj)
-
-    return mtime
+    return (
+        os.path.getmtime(filename_or_obj)
+        if path and not is_remote_uri(path)
+        else None
+    )
 
 
 def _protect_dataset_variables_inplace(dataset, cache):
@@ -463,7 +460,7 @@ def open_dataset(
     --------
     open_mfdataset
     """
-    if len(args) > 0:
+    if args:
         raise TypeError(
             "open_dataset() takes only 1 positional argument starting from version 0.18.0, "
             "all other options must be passed as keyword arguments"
@@ -473,7 +470,7 @@ def open_dataset(
         cache = chunks is None
 
     if backend_kwargs is not None:
-        kwargs.update(backend_kwargs)
+        kwargs |= backend_kwargs
 
     if engine is None:
         engine = plugins.guess_engine(filename_or_obj)
@@ -498,7 +495,7 @@ def open_dataset(
         **decoders,
         **kwargs,
     )
-    ds = _dataset_from_backend_dataset(
+    return _dataset_from_backend_dataset(
         backend_ds,
         filename_or_obj,
         engine,
@@ -509,7 +506,6 @@ def open_dataset(
         **decoders,
         **kwargs,
     )
-    return ds
 
 
 def open_dataarray(
@@ -643,7 +639,7 @@ def open_dataarray(
     --------
     open_dataset
     """
-    if len(args) > 0:
+    if args:
         raise TypeError(
             "open_dataarray() takes only 1 positional argument starting from version 0.18.0, "
             "all other options must be passed as keyword arguments"
@@ -1262,10 +1258,11 @@ def _validate_region(ds, region):
                 f"region={region}"
             )
 
-    non_matching_vars = [
-        k for k, v in ds.variables.items() if not set(region).intersection(v.dims)
-    ]
-    if non_matching_vars:
+    if non_matching_vars := [
+        k
+        for k, v in ds.variables.items()
+        if not set(region).intersection(v.dims)
+    ]:
         raise ValueError(
             f"when setting `region` explicitly in to_zarr(), all "
             f"variables in the dataset to write must have at least "
@@ -1286,7 +1283,7 @@ def _validate_datatypes_for_zarr_append(dataset):
             and not np.issubdtype(var.dtype, np.datetime64)
             and not np.issubdtype(var.dtype, np.bool_)
             and not coding.strings.is_unicode_dtype(var.dtype)
-            and not var.dtype == object
+            and var.dtype != object
         ):
             # and not re.match('^bytes[1-9]+$', var.dtype.name)):
             raise ValueError(
@@ -1402,7 +1399,7 @@ def to_zarr(
         stacklevel=4,  # for Dataset.to_zarr()
     )
 
-    if mode in ["a", "r+"]:
+    if mode in {"a", "r+"}:
         _validate_datatypes_for_zarr_append(dataset)
         if append_dim is not None:
             existing_dims = zstore.get_dimensions()
@@ -1418,8 +1415,9 @@ def to_zarr(
                     f"variable {var_name!r} already exists, but encoding was provided"
                 )
         if mode == "r+":
-            new_names = [k for k in dataset.variables if k not in existing_var_names]
-            if new_names:
+            if new_names := [
+                k for k in dataset.variables if k not in existing_var_names
+            ]:
                 raise ValueError(
                     f"dataset contains non-pre-existing variables {new_names}, "
                     "which is not allowed in ``xarray.Dataset.to_zarr()`` with "

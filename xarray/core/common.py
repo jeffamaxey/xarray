@@ -655,16 +655,15 @@ class DataWithCoords(AttrAccessMixin):
         --------
         pandas.DataFrame.pipe
         """
-        if isinstance(func, tuple):
-            func, target = func
-            if target in kwargs:
-                raise ValueError(
-                    f"{target} is both the pipe target and a keyword argument"
-                )
-            kwargs[target] = self
-            return func(*args, **kwargs)
-        else:
+        if not isinstance(func, tuple):
             return func(self, *args, **kwargs)
+        func, target = func
+        if target in kwargs:
+            raise ValueError(
+                f"{target} is both the pipe target and a keyword argument"
+            )
+        kwargs[target] = self
+        return func(*args, **kwargs)
 
     def groupby(self, group, squeeze: bool = True, restore_coord_dims: bool = None):
         """Returns a GroupBy object for performing grouped operations.
@@ -1170,7 +1169,7 @@ class DataWithCoords(AttrAccessMixin):
         group = DataArray(
             dim_coord, coords=dim_coord.coords, dims=dim_coord.dims, name=RESAMPLE_DIM
         )
-        resampler = self._resample_cls(
+        return self._resample_cls(
             self,
             group=group,
             dim=dim_name,
@@ -1178,8 +1177,6 @@ class DataWithCoords(AttrAccessMixin):
             resample_dim=RESAMPLE_DIM,
             restore_coord_dims=restore_coord_dims,
         )
-
-        return resampler
 
     def where(self, cond, other=dtypes.NA, drop: bool = False):
         """Filter elements from this object according to a condition.
@@ -1422,9 +1419,7 @@ class DataWithCoords(AttrAccessMixin):
 
         if isinstance(test_elements, Dataset):
             raise TypeError(
-                "isin() argument must be convertible to an array: {}".format(
-                    test_elements
-                )
+                f"isin() argument must be convertible to an array: {test_elements}"
             )
         elif isinstance(test_elements, (Variable, DataArray)):
             # need to explicitly pull out data to support dask arrays as the
@@ -1668,11 +1663,11 @@ def full_like(other, fill_value, dtype=None):
         if not isinstance(fill_value, dict):
             fill_value = {k: fill_value for k in other.data_vars.keys()}
 
-        if not isinstance(dtype, Mapping):
-            dtype_ = {k: dtype for k in other.data_vars.keys()}
-        else:
-            dtype_ = dtype
-
+        dtype_ = (
+            dtype
+            if isinstance(dtype, Mapping)
+            else {k: dtype for k in other.data_vars.keys()}
+        )
         data_vars = {
             k: _full_like_variable(v, fill_value.get(k, dtypes.NA), dtype_.get(k, None))
             for k, v in other.data_vars.items()
@@ -1848,16 +1843,14 @@ def _contains_cftime_datetimes(array) -> bool:
     """Check if an array contains cftime.datetime objects"""
     if cftime is None:
         return False
-    else:
-        if array.dtype == np.dtype("O") and array.size > 0:
-            sample = array.ravel()[0]
-            if is_duck_dask_array(sample):
-                sample = sample.compute()
-                if isinstance(sample, np.ndarray):
-                    sample = sample.item()
-            return isinstance(sample, cftime.datetime)
-        else:
-            return False
+    if array.dtype != np.dtype("O") or array.size <= 0:
+        return False
+    sample = array.ravel()[0]
+    if is_duck_dask_array(sample):
+        sample = sample.compute()
+        if isinstance(sample, np.ndarray):
+            sample = sample.item()
+    return isinstance(sample, cftime.datetime)
 
 
 def contains_cftime_datetimes(var) -> bool:
